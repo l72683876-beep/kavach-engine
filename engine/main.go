@@ -1,5 +1,7 @@
 // Kavach: a booking engine built to survive a stampede.
-// Core v1.6 (Milestone 2): adds the hold/confirm reservation lifecycle
+// Core v1.7: adds group commit (concurrent writes share one fsync; the
+// persist-before-ack guarantee is unchanged) on top of core v1.6 (Milestone 2):
+// the hold/confirm reservation lifecycle
 // (reserve with a TTL, confirm, release, an expiry worker that returns
 // abandoned holds to inventory atomically) on top of core v1.5:
 // bearer API keys, HMAC request signing, replay protection, layered rate
@@ -431,6 +433,67 @@ func (r *LatencyRing) snapshot() (count int, p50, p95, p99 float64) {
 	return valid, pick(0.50), pick(0.95), pick(0.99)
 }
 
+// ---------- group commit: one fsync per batch of writes ----------
+
+// GroupCommit turns per-write fsyncs into per-batch fsyncs. Concurrent
+// writers hand their line to the batcher and block until a single
+// flush+fsync covering the whole batch completes. The durability guarantee
+// is unchanged: nothing is acknowledged before it is on disk.
+type commitReq struct {
+	line string
+	done chan struct{}
+}
+
+type GroupCommit struct {
+	ch   chan commitReq
+	file *os.File
+	w    *bufio.Writer
+}
+
+func NewGroupCommit(path string, queue int) (*GroupCommit, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	g := &GroupCommit{ch: make(chan commitReq, queue), file: f, w: bufio.NewWriterSize(f, 1<<20)}
+	go g.run()
+	return g, nil
+}
+
+// run owns the file: it takes the first pending write, drains everything
+// already queued behind it, writes the whole batch, syncs ONCE, and releases
+// every writer in the batch.
+func (g *GroupCommit) run() {
+	for first := range g.ch {
+		batch := []commitReq{first}
+	drain:
+		for len(batch) < 4096 {
+			select {
+			case r := <-g.ch:
+				batch = append(batch, r)
+			default:
+				break drain
+			}
+		}
+		for _, r := range batch {
+			g.w.WriteString(r.line)
+			g.w.WriteByte('\n')
+		}
+		g.w.Flush()
+		g.file.Sync()
+		for _, r := range batch {
+			close(r.done)
+		}
+	}
+}
+
+// commit blocks until the batch containing line has been flushed and fsynced.
+func (g *GroupCommit) commit(line string) {
+	r := commitReq{line: line, done: make(chan struct{})}
+	g.ch <- r
+	<-r.done
+}
+
 // ---------- the engine ----------
 
 type job struct {
@@ -450,12 +513,8 @@ type Engine struct {
 	idem     *IdemStore
 	res      *ReservationStore
 	queue    chan *job
-	bookFile *os.File
-	logMu    sync.Mutex
-	bookW    *bufio.Writer
-	holdFile *os.File
-	holdMu   sync.Mutex
-	holdW    *bufio.Writer
+	bookGC   *GroupCommit
+	holdGC   *GroupCommit
 	bid      uint64
 	rid      uint64
 	inFlight int64
@@ -479,34 +538,24 @@ type Engine struct {
 	started      time.Time
 }
 
-// appendLog writes, flushes, and fsyncs the booking BEFORE the caller may
-// acknowledge it: persist-before-ack. A confirmed response means the record
-// is on disk.
+// appendLog hands the booking to the group committer: it returns only after
+// the batch containing this booking has been flushed and fsynced, and the
+// caller acknowledges only then (persist-before-ack, one sync per batch).
 func (e *Engine) appendLog(id, user string, seats []int) {
 	line, _ := json.Marshal(map[string]interface{}{
 		"booking_id": id, "user": user, "seats": seats, "ts": time.Now().UnixNano(),
 	})
-	e.logMu.Lock()
-	defer e.logMu.Unlock()
-	e.bookW.Write(line)
-	e.bookW.WriteByte('\n')
-	e.bookW.Flush()
-	e.bookFile.Sync()
+	e.bookGC.commit(string(line))
 }
 
 // appendHold records a reservation lifecycle event (reserved/confirmed/
-// released/expired) with the same persist-before-ack discipline.
+// released/expired) with the same group-commit discipline.
 func (e *Engine) appendHold(event string, r *Reservation, bookingID string) {
 	line, _ := json.Marshal(map[string]interface{}{
 		"event": event, "reservation_id": r.ID, "tenant": r.Tenant, "user": r.User,
 		"seats": r.Seats, "booking_id": bookingID, "ts": time.Now().UnixNano(),
 	})
-	e.holdMu.Lock()
-	defer e.holdMu.Unlock()
-	e.holdW.Write(line)
-	e.holdW.WriteByte('\n')
-	e.holdW.Flush()
-	e.holdFile.Sync()
+	e.holdGC.commit(string(line))
 }
 
 func (e *Engine) process(j *job) {
@@ -941,11 +990,11 @@ func main() {
 	ipBurst := flag.Float64("ip-burst", 40, "per-IP burst")
 	flag.Parse()
 
-	logf, err := os.Create(*logPath)
+	bookGC, err := NewGroupCommit(*logPath, 200000)
 	if err != nil {
 		log.Fatal(err)
 	}
-	holdf, err := os.Create(*holdsLog)
+	holdGC, err := NewGroupCommit(*holdsLog, 200000)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -958,10 +1007,8 @@ func main() {
 		idem:     NewIdemStore(),
 		res:      NewReservationStore(),
 		queue:    make(chan *job, 100000),
-		bookFile: logf,
-		bookW:    bufio.NewWriter(logf),
-		holdFile: holdf,
-		holdW:    bufio.NewWriter(holdf),
+		bookGC:   bookGC,
+		holdGC:   holdGC,
 		lat:      NewLatencyRing(1000000),
 		holdTTL:  time.Duration(*holdTTL) * time.Second,
 		started:  time.Now(),
