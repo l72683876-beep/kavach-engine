@@ -55,6 +55,26 @@ curl http://localhost:8080/metrics
 That is the "two lines" promise: point your app at `/book`, send a user id and an
 idempotency key, and Kavach handles the stampede behind it.
 
+## Security mode (v1.5)
+
+Local mode (no keys) stays the two-minute default above. For anything exposed to a network:
+
+```bash
+./kavach -seats 5000 -workers 8 \
+  -api-keys "sk_live_abc:tenant-a,sk_live_xyz:tenant-b" \
+  -hmac-secret "$KAVACH_HMAC_SECRET" \
+  -ip-rate 20 -user-rate 2
+```
+
+Every write must then carry: `Authorization: Bearer <key>`, `X-Kavach-Timestamp`
+(unix seconds, ±5 min), `X-Kavach-Request-Id` (unique per request), and
+`X-Kavach-Signature` = hex(HMAC-SHA256(secret, timestamp + "\n" + request_id + "\n" + raw_body)).
+Replayed requests are rejected; a key reused with a different payload gets
+`idempotency_conflict`; `GET /status?idempotency_key=...` resolves an ambiguous
+timeout. A confirmed response means the booking is already fsynced to disk
+(persist-before-ack). The full audit and the 14-test acceptance suite:
+[docs/AUDIT.md](docs/AUDIT.md), `sim/security_test.py`.
+
 ## Run the stampede yourself
 
 ```bash
@@ -73,7 +93,6 @@ python sim/verify.py engine/bookings.jsonl 5000
 
 Hardware: one small container, 2 CPU cores, 4 GB RAM. The test client (Python/asyncio)
 was the bottleneck in every run; the engine's own latency percentiles are server-side.
-Full numbers and honest limits in [RESULTS.md](RESULTS.md).
 
 | Test | Load | Result |
 |---|---|---|
