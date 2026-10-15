@@ -31,7 +31,7 @@ or the app hangs and users wait forever. Kavach is designed against those three 
 | Inventory cache | Seat map lives in memory, atomically updated | Reads never wait on the database |
 | Seat lock | Atomic CAS per seat | Two people fight for seat 42: exactly one wins |
 | Reservation lifecycle | Hold with a TTL, confirm, release, expiry worker | A cart is not a sale: seats return if payment never lands |
-| Event log | Append-only JSONL of every booking, group commit | The durable record; one fsync per batch of writes |
+| Event log | Append-only JSONL of every booking | The durable record; the source of truth for audits |
 | Metrics | Counters + latency percentiles at `/metrics` | You cannot fix what you cannot see |
 
 ## Quickstart (2 minutes)
@@ -110,6 +110,57 @@ confirmed seat never returns to the pool, and a re-confirm is idempotent (the
 same booking comes back). Every lifecycle event is fsynced before its response,
 same as bookings. 19-test acceptance suite: `sim/lifecycle_test.py`.
 
+## Waitlist (v1.8)
+
+Sold out should not mean lost. When the inventory is empty, users join a FIFO
+waitlist instead of getting a dead end:
+
+```bash
+curl -X POST http://localhost:8080/waitlist \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"priya","idempotency_key":"priya-line-1","seats":1}'
+# {"status":"queued","waitlist_id":"WL00000001","position":1}
+
+# your place in line
+curl 'http://localhost:8080/waitlist?user_id=priya'
+
+# leave the line
+curl -X POST http://localhost:8080/waitlist/cancel \
+  -H 'Content-Type: application/json' -d '{"waitlist_id":"WL00000001"}'
+```
+
+The fairness rule is strict: seats return on expiry or release and go to the
+FRONT of the line first. A front entry that needs more seats than are free
+blocks the entries behind it, so nobody can buy their way past the queue. The
+fulfilled user gets a live reservation automatically, and if the engine was
+started with `-webhook-url http://...`, a `waitlist_fulfilled` event is POSTed
+there (fire-and-forget; deliveries never block the request path).
+13-test acceptance suite: `sim/waitlist_test.py`.
+
+## Client SDKs: the real two lines
+
+```python
+# sdk/python/kavach.py - standard library only, no dependencies
+from kavach import Kavach
+k = Kavach("http://localhost:8080")
+print(k.book("priya", "priya-booking-1", seats=1))
+```
+
+```js
+// sdk/javascript/kavach.mjs - Node 18+ or any modern browser
+import { Kavach } from "./kavach.mjs";
+const k = new Kavach("http://localhost:8080");
+console.log(await k.book("priya", "priya-booking-1", 1));
+```
+
+Pass `api_key` and `hmac_secret` and both SDKs speak the production auth
+handshake (bearer key, timestamp, request id, HMAC signature) with zero extra
+code. Both are covered by their own acceptance tests (11 and 9 checks,
+`sdk/test_sdks.py`, `sdk/test_sdk.mjs`).
+
+A hands-on walkthrough of everything above, written for a browser tab:
+[TEST_GUIDE.md](TEST_GUIDE.md).
+
 ## Run the stampede yourself
 
 ```bash
@@ -120,17 +171,14 @@ python sim/simulate.py --users 20000 --concurrency 10000
 # sustained hammer: 1,000,000 requests with 10% bots
 python sim/simulate.py --total 1000000 --concurrency 3000 --users 100000 --bots 0.1
 
-# or the official k6 benchmark (grafana k6 v0.54)
-k6 run sim/k6_benchmark.js
-
 # prove no seat was ever double-sold
 python sim/verify.py engine/bookings.jsonl 5000
 ```
 
 ## The report card (measured, not claimed)
 
-Hardware: one small container, 2 CPU cores, 4 GB RAM. The k6 rows share the box
-between client and engine, so they are conservative.
+Hardware: one small container, 2 CPU cores, 4 GB RAM. The test client (Python/asyncio)
+was the bottleneck in every run; the engine's own latency percentiles are server-side.
 
 | Test | Load | Result |
 |---|---|---|
@@ -154,8 +202,8 @@ between client and engine, so they are conservative.
 
 1. Redis-backed distributed seat lock + multi-node mode
 2. Write-behind database layer (Postgres) replaying from the event log
-3. Waitlist mode (queue positions instead of rejections)
-4. Client SDKs (Python, JavaScript) so plugging in really is two lines
+3. ~~Waitlist mode~~ shipped in v1.8
+4. ~~Client SDKs (Python, JavaScript)~~ shipped in v1.8
 5. Chaos v2: kill workers mid-run, not the whole process
 
 ## License
