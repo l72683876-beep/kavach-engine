@@ -296,6 +296,33 @@ shows two sustained rounds, 1,000,000 and 2,000,000 requests (~18 minutes of con
 pressure, peak 3,077 req/s on a 2-core box, 0 errors, 0 double-sell). Details and honest
 caveats in [demo/README.md](demo/README.md).
 
+## Independent third-party verification (Oct 15, 2026)
+
+A verification run was executed by an external AI agent on a 4-core GitHub Codespace,
+using this repository's engine plus `sim/simulate.py` and `sim/verify.py`, and produced
+its own report from the raw result logs.
+
+| Suite | Users / Seats | Requests | Peak RPS | P50 / P95 / P99 (ms) | Duplicate seats | Server errors |
+|---|---|---|---|---|---|---|
+| 1 | 100,000 / 5,000 | 784,187 | 3,852.4 | 2.08 / 3.67 / 6.73 | 0 | 0 |
+| 2 | 200,000 / 20,000 | 1,567,432 | 3,660.2 | 2.45 / 4.98 / 9.33 | 0 | 0 |
+
+Totals: 2,351,619 requests, zero duplicate seats, zero crashes, zero HTTP 500s. In Suite 2,
+1,558,881 of 1,567,432 requests were rejected by IP rate limiting, which is the overload
+protection working as designed. Because rejections are cheap, the sub-5 ms P95 above mostly
+reflects the fast reject path, not end-to-end booking confirmations; the k6 table below shows
+P95 for accepted bookings under heavy contention. The request counts are totals, not
+simultaneous connections.
+
+Reproduce:
+
+```bash
+cd engine && go build -o kavach . && ./kavach -seats 5000 -ip-rate 0
+# separate terminal
+python3 sim/simulate.py --users 100000 --seats 5000
+python3 sim/verify.py engine/bookings.jsonl 5000
+```
+
 ## The report card (measured, not claimed)
 
 Hardware: one small container, 2 CPU cores, 4 GB RAM. The test client (Python/asyncio)
