@@ -1,9 +1,12 @@
 // Kavach: a booking engine built to survive a stampede.
-// Core v1.5: adds security hardening (bearer API keys, HMAC request signing,
-// replay protection, layered rate limits, an in-flight capacity gate, strict
-// input validation, and persist-before-ack durable logging) on top of the v1
-// core: bounded admission queue, worker pool, atomic CAS inventory,
-// idempotency keys, append-only booking log.
+// Core v1.6 (Milestone 2): adds the hold/confirm reservation lifecycle
+// (reserve with a TTL, confirm, release, an expiry worker that returns
+// abandoned holds to inventory atomically) on top of core v1.5:
+// bearer API keys, HMAC request signing, replay protection, layered rate
+// limits, an in-flight capacity gate, strict input validation, and
+// persist-before-ack durable logging, on top of the v1 core: bounded
+// admission queue, worker pool, atomic CAS inventory, idempotency keys,
+// append-only booking log.
 package main
 
 import (
@@ -40,6 +43,7 @@ type Inventory struct {
 	seats  []int32
 	cursor uint64
 	sold   int64
+	held   int64
 }
 
 func NewInventory(n int) *Inventory { return &Inventory{seats: make([]int32, n)} }
@@ -48,8 +52,8 @@ func NewInventory(n int) *Inventory { return &Inventory{seats: make([]int32, n)}
 // A compare-and-swap on each seat means two workers can never hold the same seat.
 func (inv *Inventory) tryTake(n int) []int {
 	l := len(inv.seats)
-	if int(atomic.LoadInt64(&inv.sold))+n > l {
-		return nil // fast path: everything gone
+	if int(atomic.LoadInt64(&inv.sold))+int(atomic.LoadInt64(&inv.held))+n > l {
+		return nil // fast path: everything gone or held
 	}
 	picked := make([]int, 0, n)
 	start := int(atomic.AddUint64(&inv.cursor, uint64(n)) % uint64(l))
@@ -65,18 +69,29 @@ func (inv *Inventory) tryTake(n int) []int {
 		}
 		return nil
 	}
+	atomic.AddInt64(&inv.held, int64(n))
 	return picked
 }
 
+// commit moves held seats to sold (the confirm step).
 func (inv *Inventory) commit(seats []int) {
 	for _, idx := range seats {
 		atomic.StoreInt32(&inv.seats[idx], seatSold)
 	}
 	atomic.AddInt64(&inv.sold, int64(len(seats)))
+	atomic.AddInt64(&inv.held, -int64(len(seats)))
 }
 
-func (inv *Inventory) stats() (total, sold int) {
-	return len(inv.seats), int(atomic.LoadInt64(&inv.sold))
+// release returns held seats to the free pool (cancel or expiry).
+func (inv *Inventory) release(seats []int) {
+	for _, idx := range seats {
+		atomic.CompareAndSwapInt32(&inv.seats[idx], seatHeld, seatFree)
+	}
+	atomic.AddInt64(&inv.held, -int64(len(seats)))
+}
+
+func (inv *Inventory) stats() (total, sold, held int) {
+	return len(inv.seats), int(atomic.LoadInt64(&inv.sold)), int(atomic.LoadInt64(&inv.held))
 }
 
 // ---------- rate limiter (the anti-bot gate) ----------
@@ -286,6 +301,104 @@ func (s *IdemStore) trim(max int, minAge time.Duration) {
 	}
 }
 
+// ---------- reservations: the hold/confirm lifecycle ----------
+
+const (
+	resHeld      = int32(1)
+	resConfirmed = int32(2)
+	resExpired   = int32(3)
+	resReleased  = int32(4)
+)
+
+func resStateName(s int32) string {
+	switch s {
+	case resHeld:
+		return "held"
+	case resConfirmed:
+		return "confirmed"
+	case resExpired:
+		return "expired"
+	case resReleased:
+		return "released"
+	}
+	return "unknown"
+}
+
+type Reservation struct {
+	ID          string
+	Tenant      string
+	User        string
+	Seats       []int
+	State       int32 // atomic; CAS gives single-winner transitions
+	Fingerprint string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	BookingID   string
+}
+
+// transition returns true when this caller won the state change.
+func (r *Reservation) transition(from, to int32) bool {
+	return atomic.CompareAndSwapInt32(&r.State, from, to)
+}
+
+type ReservationStore struct {
+	mu        sync.Mutex
+	m         map[string]*Reservation
+	idemIndex map[string]string // tenant|key -> reservation id
+}
+
+func NewReservationStore() *ReservationStore {
+	return &ReservationStore{m: map[string]*Reservation{}, idemIndex: map[string]string{}}
+}
+
+func (s *ReservationStore) get(id string) (*Reservation, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.m[id]
+	return r, ok
+}
+
+func (s *ReservationStore) byIdem(tenant, key string) (*Reservation, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, ok := s.idemIndex[tenant+"|"+key]
+	if !ok {
+		return nil, false
+	}
+	r, ok := s.m[id]
+	return r, ok
+}
+
+// put registers a reservation and its idempotency alias. Returns false when
+// the idempotency key was already claimed (the caller then re-reads byIdem).
+func (s *ReservationStore) put(r *Reservation, idemKey string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if idemKey != "" {
+		ik := r.Tenant + "|" + idemKey
+		if _, exists := s.idemIndex[ik]; exists {
+			return false
+		}
+		s.idemIndex[ik] = r.ID
+	}
+	s.m[r.ID] = r
+	return true
+}
+
+// expired collects held reservations past their deadline; the caller then
+// transitions each one (outside the lock, single-winner CAS).
+func (s *ReservationStore) expired(now time.Time) []*Reservation {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []*Reservation
+	for _, r := range s.m {
+		if atomic.LoadInt32(&r.State) == resHeld && now.After(r.ExpiresAt) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // ---------- latency sampling ----------
 
 type LatencyRing struct {
@@ -335,12 +448,18 @@ type Engine struct {
 	ipLim    *Limiter
 	auth     *Auth
 	idem     *IdemStore
+	res      *ReservationStore
 	queue    chan *job
 	bookFile *os.File
 	logMu    sync.Mutex
 	bookW    *bufio.Writer
+	holdFile *os.File
+	holdMu   sync.Mutex
+	holdW    *bufio.Writer
 	bid      uint64
+	rid      uint64
 	inFlight int64
+	holdTTL  time.Duration
 
 	received     int64
 	ipLimited    int64
@@ -352,6 +471,10 @@ type Engine struct {
 	confirmed    int64
 	soldOut      int64
 	errors       int64
+	holdsCreated int64
+	holdsConfirm int64
+	holdsRelease int64
+	holdsExpired int64
 	lat          *LatencyRing
 	started      time.Time
 }
@@ -369,6 +492,21 @@ func (e *Engine) appendLog(id, user string, seats []int) {
 	e.bookW.WriteByte('\n')
 	e.bookW.Flush()
 	e.bookFile.Sync()
+}
+
+// appendHold records a reservation lifecycle event (reserved/confirmed/
+// released/expired) with the same persist-before-ack discipline.
+func (e *Engine) appendHold(event string, r *Reservation, bookingID string) {
+	line, _ := json.Marshal(map[string]interface{}{
+		"event": event, "reservation_id": r.ID, "tenant": r.Tenant, "user": r.User,
+		"seats": r.Seats, "booking_id": bookingID, "ts": time.Now().UnixNano(),
+	})
+	e.holdMu.Lock()
+	defer e.holdMu.Unlock()
+	e.holdW.Write(line)
+	e.holdW.WriteByte('\n')
+	e.holdW.Flush()
+	e.holdFile.Sync()
 }
 
 func (e *Engine) process(j *job) {
@@ -415,6 +553,19 @@ func (e *Engine) worker() {
 	}
 }
 
+// expireSweep returns abandoned holds to the free pool. Each reservation
+// changes state by CAS, so a confirm racing an expiry has exactly one winner.
+func (e *Engine) expireSweep() {
+	now := time.Now()
+	for _, r := range e.res.expired(now) {
+		if r.transition(resHeld, resExpired) {
+			e.inv.release(r.Seats)
+			atomic.AddInt64(&e.holdsExpired, 1)
+			e.appendHold("expired", r, "")
+		}
+	}
+}
+
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -429,10 +580,14 @@ func (e *Engine) clientIP(r *http.Request) string {
 	return host
 }
 
-func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
+// precheck runs the shared front half of every write endpoint: method,
+// bounded body read, authentication, strict schema validation, the per-IP
+// rate limit, and the global in-flight gate. It returns the tenant, the
+// parsed request, and an ok flag (a response was already written when false).
+func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{}) (string, bool) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
+		return "", false
 	}
 	atomic.AddInt64(&e.received, 1)
 	r.Body = http.MaxBytesReader(w, r.Body, 16384) // bounded input
@@ -440,7 +595,7 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		atomic.AddInt64(&e.errors, 1)
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
-		return
+		return "", false
 	}
 	tenant, st, msg := e.auth.verify(r, body)
 	if st != 0 {
@@ -451,24 +606,45 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, st, Result{Status: msg})
-		return
-	}
-	var req struct {
-		User    string `json:"user_id"`
-		IdemKey string `json:"idempotency_key"`
-		Seats   int    `json:"seats"`
+		return "", false
 	}
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	dec.DisallowUnknownFields() // strict schema: reject, never sanitize silently
-	if err := dec.Decode(&req); err != nil || req.User == "" || req.IdemKey == "" || req.Seats < 1 || req.Seats > 4 {
+	if err := dec.Decode(dst); err != nil {
 		atomic.AddInt64(&e.errors, 1)
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
-		return
+		return "", false
 	}
 	if !e.ipLim.Allow(e.clientIP(r)) { // layer 1: per IP, absorbs botnets
 		atomic.AddInt64(&e.ipLimited, 1)
 		w.Header().Set("Retry-After", "2")
 		writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
+		return "", false
+	}
+	if n := atomic.AddInt64(&e.inFlight, 1); n > 500000 { // global capacity gate
+		atomic.AddInt64(&e.inFlight, -1)
+		atomic.AddInt64(&e.overloaded, 1)
+		w.Header().Set("Retry-After", "5")
+		writeJSON(w, http.StatusServiceUnavailable, Result{Status: "overloaded"})
+		return "", false
+	}
+	return tenant, true
+}
+
+func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		User    string `json:"user_id"`
+		IdemKey string `json:"idempotency_key"`
+		Seats   int    `json:"seats"`
+	}
+	tenant, ok := e.precheck(w, r, &req)
+	if !ok {
+		return
+	}
+	defer atomic.AddInt64(&e.inFlight, -1)
+	if req.User == "" || req.IdemKey == "" || req.Seats < 1 || req.Seats > 4 {
+		atomic.AddInt64(&e.errors, 1)
+		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
 		return
 	}
 	if !e.userLim.Allow(tenant + ":" + req.User) { // layer 2: per user
@@ -477,16 +653,9 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
 		return
 	}
-	if n := atomic.AddInt64(&e.inFlight, 1); n > 500000 { // global capacity gate
-		atomic.AddInt64(&e.inFlight, -1)
-		atomic.AddInt64(&e.overloaded, 1)
-		w.Header().Set("Retry-After", "5")
-		writeJSON(w, http.StatusServiceUnavailable, Result{Status: "overloaded"})
-		return
-	}
-	defer atomic.AddInt64(&e.inFlight, -1)
 
-	j := &job{key: req.IdemKey, tenant: tenant, user: req.User, fp: fmt.Sprintf("%x", sha256.Sum256(body)),
+	j := &job{key: req.IdemKey, tenant: tenant, user: req.User,
+		fp:    fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%d", req.IdemKey, req.Seats)))),
 		seats: req.Seats, resp: make(chan Result, 1)}
 	t0 := time.Now()
 	select {
@@ -507,8 +676,205 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleStatus lets a client resolve an ambiguous timeout: query the stored
-// outcome of an idempotency key instead of blindly re-submitting.
+// handleReserve: PUT A HOLD on seats with a TTL, without buying yet.
+// The seats leave the free pool immediately; they return automatically when
+// the hold expires, or on an explicit release.
+func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		User    string `json:"user_id"`
+		IdemKey string `json:"idempotency_key"`
+		Seats   int    `json:"seats"`
+	}
+	tenant, ok := e.precheck(w, r, &req)
+	if !ok {
+		return
+	}
+	defer atomic.AddInt64(&e.inFlight, -1)
+	if req.User == "" || req.IdemKey == "" || req.Seats < 1 || req.Seats > 4 {
+		atomic.AddInt64(&e.errors, 1)
+		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+		return
+	}
+	if !e.userLim.Allow(tenant + ":" + req.User) { // layer 2: per user
+		atomic.AddInt64(&e.userLimited, 1)
+		w.Header().Set("Retry-After", "2")
+		writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
+		return
+	}
+
+	// idempotent reserve: the same key returns the same reservation; the same
+	// key with a different payload is a conflict
+	fp := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%d", req.IdemKey, req.Seats))))
+	if prev, found := e.res.byIdem(tenant, req.IdemKey); found {
+		if prev.Fingerprint != fp {
+			atomic.AddInt64(&e.conflicts, 1)
+			writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "idempotency_conflict"})
+			return
+		}
+		e.writeReservation(w, http.StatusOK, prev)
+		return
+	}
+
+	seats := e.inv.tryTake(req.Seats)
+	if seats == nil {
+		atomic.AddInt64(&e.soldOut, 1)
+		writeJSON(w, http.StatusOK, Result{Status: "sold_out"})
+		return
+	}
+	res := &Reservation{
+		ID:          fmt.Sprintf("RSV%08d", atomic.AddUint64(&e.rid, 1)),
+		Tenant:      tenant,
+		User:        req.User,
+		Seats:       seats,
+		Fingerprint: fp,
+		CreatedAt:   time.Now(),
+		ExpiresAt:   time.Now().Add(e.holdTTL),
+		State:       resHeld,
+	}
+	if !e.res.put(res, req.IdemKey) { // lost a concurrent race on the same key
+		e.inv.release(seats)
+		if prev, found := e.res.byIdem(tenant, req.IdemKey); found {
+			e.writeReservation(w, http.StatusOK, prev)
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, Result{Status: "error"})
+		return
+	}
+	atomic.AddInt64(&e.holdsCreated, 1)
+	e.appendHold("reserved", res, "") // durable BEFORE the ack
+	e.writeReservation(w, http.StatusOK, res)
+}
+
+// handleConfirm: turn a live hold into a confirmed booking. The transition
+// HELD -> CONFIRMED is a single-winner CAS: a confirm racing the expiry
+// worker has exactly one winner, so a seat can never be both expired and sold.
+func (e *Engine) handleConfirm(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ReservationID string `json:"reservation_id"`
+		User          string `json:"user_id"`
+	}
+	tenant, ok := e.precheck(w, r, &req)
+	if !ok {
+		return
+	}
+	defer atomic.AddInt64(&e.inFlight, -1)
+	res, found := e.res.get(req.ReservationID)
+	if !found || res.Tenant != tenant { // 404 both ways: never leak existence
+		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
+		return
+	}
+	if req.User != "" && req.User != res.User {
+		writeJSON(w, http.StatusForbidden, Result{Status: "forbidden"})
+		return
+	}
+	switch atomic.LoadInt32(&res.State) {
+	case resConfirmed: // idempotent confirm: same booking back
+		e.writeReservation(w, http.StatusOK, res)
+		return
+	case resExpired:
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "expired"})
+		return
+	case resReleased:
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "released"})
+		return
+	}
+	if !res.transition(resHeld, resConfirmed) { // expiry or release won the race
+		e.writeReservationState(w, res)
+		return
+	}
+	bookingID := fmt.Sprintf("BK%08d", atomic.AddUint64(&e.bid, 1))
+	res.BookingID = bookingID
+	e.appendLog(bookingID, res.User, res.Seats) // durable BEFORE the ack
+	e.inv.commit(res.Seats)
+	atomic.AddInt64(&e.confirmed, 1)
+	atomic.AddInt64(&e.holdsConfirm, 1)
+	e.appendHold("confirmed", res, bookingID)
+	e.writeReservation(w, http.StatusOK, res)
+}
+
+// handleRelease: give held seats back before the TTL runs out.
+func (e *Engine) handleRelease(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ReservationID string `json:"reservation_id"`
+	}
+	tenant, ok := e.precheck(w, r, &req)
+	if !ok {
+		return
+	}
+	defer atomic.AddInt64(&e.inFlight, -1)
+	res, found := e.res.get(req.ReservationID)
+	if !found || res.Tenant != tenant {
+		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
+		return
+	}
+	switch atomic.LoadInt32(&res.State) {
+	case resReleased:
+		e.writeReservation(w, http.StatusOK, res)
+		return
+	case resConfirmed:
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "confirmed"})
+		return
+	case resExpired:
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "expired"})
+		return
+	}
+	if res.transition(resHeld, resReleased) {
+		e.inv.release(res.Seats)
+		atomic.AddInt64(&e.holdsRelease, 1)
+		e.appendHold("released", res, "")
+		e.writeReservation(w, http.StatusOK, res)
+		return
+	}
+	e.writeReservationState(w, res)
+}
+
+// handleReservation: the status of one hold, tenant-scoped. A client that
+// lost a response can resolve the outcome here instead of guessing.
+func (e *Engine) handleReservation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	tenant, st, msg := e.auth.verify(r, nil)
+	if st != 0 {
+		writeJSON(w, st, Result{Status: msg})
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+		return
+	}
+	res, found := e.res.get(id)
+	if !found || res.Tenant != tenant {
+		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
+		return
+	}
+	e.writeReservation(w, http.StatusOK, res)
+}
+
+func (e *Engine) writeReservation(w http.ResponseWriter, code int, res *Reservation) {
+	writeJSON(w, code, map[string]interface{}{
+		"status":          resStateName(atomic.LoadInt32(&res.State)),
+		"reservation_id":  res.ID,
+		"seats":           res.Seats,
+		"hold_expires_at": res.ExpiresAt.Unix(),
+		"hold_seconds":    int(time.Until(res.ExpiresAt).Seconds()),
+		"booking_id":      res.BookingID,
+	})
+}
+
+func (e *Engine) writeReservationState(w http.ResponseWriter, res *Reservation) {
+	writeJSON(w, http.StatusConflict, map[string]interface{}{
+		"status":         resStateName(atomic.LoadInt32(&res.State)),
+		"reservation_id": res.ID,
+		"booking_id":     res.BookingID,
+	})
+}
+
+// handleStatus lets a client resolve an ambiguous timeout on the direct
+// /book path: query the stored outcome of an idempotency key instead of
+// blindly re-submitting.
 func (e *Engine) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -532,8 +898,8 @@ func (e *Engine) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *Engine) handleSeats(w http.ResponseWriter, r *http.Request) {
-	total, sold := e.inv.stats()
-	writeJSON(w, http.StatusOK, map[string]int{"total": total, "sold": sold, "free": total - sold})
+	total, sold, held := e.inv.stats()
+	writeJSON(w, http.StatusOK, map[string]int{"total": total, "sold": sold, "held": held, "free": total - sold - held})
 }
 
 func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -551,6 +917,10 @@ func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"confirmed":         atomic.LoadInt64(&e.confirmed),
 		"sold_out":          atomic.LoadInt64(&e.soldOut),
 		"errors":            atomic.LoadInt64(&e.errors),
+		"holds_created":     atomic.LoadInt64(&e.holdsCreated),
+		"holds_confirmed":   atomic.LoadInt64(&e.holdsConfirm),
+		"holds_released":    atomic.LoadInt64(&e.holdsRelease),
+		"holds_expired":     atomic.LoadInt64(&e.holdsExpired),
 		"latency_ms":        map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
 		"uptime_seconds":    time.Since(e.started).Seconds(),
 	})
@@ -560,7 +930,9 @@ func main() {
 	seats := flag.Int("seats", 5000, "seats in inventory")
 	addr := flag.String("addr", ":8080", "listen address")
 	workers := flag.Int("workers", 16, "worker count")
-	logPath := flag.String("log", "bookings.jsonl", "booking event log path")
+	logPath := flag.String("log", "bookings.jsonl", "confirmed-booking event log path")
+	holdsLog := flag.String("holds-log", "holds.jsonl", "reservation lifecycle event log path")
+	holdTTL := flag.Int("hold-ttl", 300, "reservation hold time-to-live in seconds")
 	apiKeys := flag.String("api-keys", "", "API keys as key:tenant,key:tenant (empty = local mode, auth off)")
 	secret := flag.String("hmac-secret", "", "HMAC secret; when set, requests must be signed (X-Kavach-Timestamp, X-Kavach-Request-Id, X-Kavach-Signature over timestamp\\nrequest-id\\nbody)")
 	userRate := flag.Float64("user-rate", 2, "per-user requests/second (0 disables)")
@@ -573,6 +945,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	holdf, err := os.Create(*holdsLog)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	e := &Engine{
 		inv:      NewInventory(*seats),
@@ -580,10 +956,14 @@ func main() {
 		ipLim:    NewLimiter(*ipRate, *ipBurst),
 		auth:     NewAuth(*apiKeys, *secret),
 		idem:     NewIdemStore(),
+		res:      NewReservationStore(),
 		queue:    make(chan *job, 100000),
 		bookFile: logf,
 		bookW:    bufio.NewWriter(logf),
+		holdFile: holdf,
+		holdW:    bufio.NewWriter(holdf),
 		lat:      NewLatencyRing(1000000),
+		holdTTL:  time.Duration(*holdTTL) * time.Second,
 		started:  time.Now(),
 	}
 	for i := 0; i < *workers; i++ {
@@ -601,8 +981,18 @@ func main() {
 			e.auth.pruneNonces()
 		}
 	}()
+	go func() { // hold expiry: abandoned holds return to the free pool
+		t := time.NewTicker(1 * time.Second)
+		for range t.C {
+			e.expireSweep()
+		}
+	}()
 
 	http.HandleFunc("/book", e.handleBook)
+	http.HandleFunc("/reserve", e.handleReserve)
+	http.HandleFunc("/confirm", e.handleConfirm)
+	http.HandleFunc("/release", e.handleRelease)
+	http.HandleFunc("/reservation", e.handleReservation)
 	http.HandleFunc("/status", e.handleStatus)
 	http.HandleFunc("/seats", e.handleSeats)
 	http.HandleFunc("/metrics", e.handleMetrics)
@@ -610,6 +1000,6 @@ func main() {
 	if e.auth.enabled {
 		mode = "authenticated"
 	}
-	log.Printf("kavach engine on %s: %d seats, %d workers, %d CPUs, mode=%s", *addr, *seats, *workers, runtime.NumCPU(), mode)
+	log.Printf("kavach engine on %s: %d seats, %d workers, %d CPUs, hold-ttl=%ds, mode=%s", *addr, *seats, *workers, runtime.NumCPU(), *holdTTL, mode)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }

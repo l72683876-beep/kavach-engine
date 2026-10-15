@@ -30,6 +30,7 @@ or the app hangs and users wait forever. Kavach is designed against those three 
 | Worker pool | Fixed worker count pulls from the queue | Capacity is a setting, not a guess |
 | Inventory cache | Seat map lives in memory, atomically updated | Reads never wait on the database |
 | Seat lock | Atomic CAS per seat | Two people fight for seat 42: exactly one wins |
+| Reservation lifecycle | Hold with a TTL, confirm, release, expiry worker | A cart is not a sale: seats return if payment never lands |
 | Event log | Append-only JSONL of every booking | The durable record; the source of truth for audits |
 | Metrics | Counters + latency percentiles at `/metrics` | You cannot fix what you cannot see |
 
@@ -75,6 +76,40 @@ timeout. A confirmed response means the booking is already fsynced to disk
 (persist-before-ack). The full audit and the 14-test acceptance suite:
 [docs/AUDIT.md](docs/AUDIT.md), `sim/security_test.py`.
 
+## Hold, confirm, release (v1.6)
+
+The direct `/book` path stays for speed. Real commerce needs a cart: reserve now,
+pay later. Kavach's reservation lifecycle:
+
+```bash
+# 1. hold seats (they leave the free pool immediately, for a TTL)
+curl -X POST http://localhost:8080/reserve \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"priya","idempotency_key":"priya-cart-1","seats":2}'
+# {"status":"held","reservation_id":"RSV00000001","seats":[2,3],"hold_expires_at":...}
+
+# 2. after your payment provider confirms, turn the hold into a booking
+curl -X POST http://localhost:8080/confirm \
+  -H 'Content-Type: application/json' \
+  -d '{"reservation_id":"RSV00000001","user_id":"priya"}'
+# {"status":"confirmed","booking_id":"BK00000001","seats":[2,3]}
+
+# 3. or give the seats back before the TTL (default 5 minutes, -hold-ttl)
+curl -X POST http://localhost:8080/release \
+  -H 'Content-Type: application/json' -d '{"reservation_id":"RSV00000001"}'
+
+# resolve any ambiguity: what happened to that reservation?
+curl 'http://localhost:8080/reservation?id=RSV00000001'
+```
+
+Why this is the hard part: an expiry worker returns abandoned holds to the free
+pool every second, and every state change (`held → confirmed`, `held → expired`,
+`held → released`) is a single-winner compare-and-swap. So a confirm racing the
+expiry has exactly one winner: a seat can never be both expired and sold, a
+confirmed seat never returns to the pool, and a re-confirm is idempotent (the
+same booking comes back). Every lifecycle event is fsynced before its response,
+same as bookings. 19-test acceptance suite: `sim/lifecycle_test.py`.
+
 ## Run the stampede yourself
 
 ```bash
@@ -107,6 +142,8 @@ was the bottleneck in every run; the engine's own latency percentiles are server
   The Redis-backed multi-node lock is the next milestone; the design is in the docs.
 - The event log is a local file. The write-behind database layer is designed but not wired.
 - Chaos v1 freezes the process; real chaos engineering kills stages independently.
+- Holds live in memory: a restart frees every hold (confirmed bookings are safe on disk;
+  the event log records what was held). The database layer is the fix.
 
 ## Roadmap
 
