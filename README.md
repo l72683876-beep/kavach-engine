@@ -177,6 +177,45 @@ failures so you can watch it survive them:
 exactly the right seats sold, zero double-sells, process alive. Counters
 `chaos_stalls` and `chaos_panics` show on `/metrics`.
 
+## Multi-node (v2.0)
+
+One process has one CPU budget. When a single node saturates, run a cluster: pass
+`-peers` with EVERY node's address, this one included.
+
+```bash
+# terminal 1, 2, 3: three nodes, each owning a disjoint slice of the inventory
+./kavach -seats 100 -workers 4 -peers 127.0.0.1:8081,127.0.0.1:8082,127.0.0.1:8083 -addr :8081
+./kavach -seats 100 -workers 4 -peers 127.0.0.1:8081,127.0.0.1:8082,127.0.0.1:8083 -addr :8082
+./kavach -seats 100 -workers 4 -peers 127.0.0.1:8081,127.0.0.1:8082,127.0.0.1:8083 -addr :8083
+```
+
+How it works, and why there is still no double-sell:
+
+- **Seat-range sharding.** Node 0 owns seats 0-99, node 1 owns 100-199, and so on
+  (`-seats` is the per-node slice; the cluster total is nodes x seats). Every write is
+  a CAS on the node's own slice, so there is no shared lock to argue over, and the
+  never-double-sell guarantee is the same atomic CAS as single-node, just partitioned.
+  No Redis, no consensus, no extra dependency.
+- **Ring forwarding.** A node whose slice is sold out forwards the request (original
+  bytes plus auth headers, with an `X-Kavach-Forwarded-By` marker) to the next peers in
+  the ring until one confirms. Every node can serve every request; any node is a valid
+  entry point.
+- **Disjoint ID ranges.** Node k issues IDs starting at k x 10,000,000, so BK/RSV/WL
+  ids from different nodes never collide and logs stay mergeable.
+- **Forwarded retries are safe.** The owning node's idempotency store answers a
+  forwarded retry with the stored result, so a lost response can never become a second
+  booking. Reads (`/reservation`, `/status`, `/confirm`, `/release`) forward on
+  not-found, so any node can resolve any object.
+- **Per-node durability.** Each node keeps its own append-only logs and replays them on
+  restart, exactly like single-node. Kill a node mid-rush, restart it, its slice is back.
+- **`/seats` becomes the cluster view**: the same total/sold/held/free shape, summed
+  across nodes, plus a per-node breakdown (`/seats?local=1` stays local).
+
+Known limits, on the record: waitlist and per-user rate limits are per-node (a global
+waitlist needs the shared-state milestone); `/metrics` is local; a forwarded request
+skips the peer's IP limiter (it was already limited at the entry node) while still
+passing full auth verification, so keep `-peers` on a private network.
+
 ## Client SDKs: the real two lines
 
 ```python
@@ -231,8 +270,9 @@ was the bottleneck in every run; the engine's own latency percentiles are server
 
 ## What v1 does not do yet (the honest list)
 
-- Distributed mode: the v1 inventory is in one process (atomic CAS is the seat lock).
-  The Redis-backed multi-node lock is the next milestone; the design is in the docs.
+- Shared-state mode: multi-node is seat-range sharding (each node owns a disjoint
+  slice, shipped in v2.0). A Redis-backed shared store for global rate limiting and a
+  cluster-wide waitlist is the next milestone; the design is in the docs.
 - The event log is a local file. The write-behind database layer is designed but not wired.
 - Chaos v1 froze the whole process; v1.9 adds contained worker panics and random stalls.
 - A restart replays the append-only event log, so sold seats, live holds (with their
@@ -247,6 +287,7 @@ was the bottleneck in every run; the engine's own latency percentiles are server
 3. ~~Waitlist mode~~ shipped in v1.8
 4. ~~Client SDKs (Python, JavaScript)~~ shipped in v1.8
 5. ~~Chaos v2~~ shipped in v1.9 (contained worker panics, random stalls)
+6. ~~Multi-node~~ shipped in v2.0 (seat-range sharding, ring forwarding, disjoint ID ranges)
 
 ## License
 

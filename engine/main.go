@@ -1,5 +1,8 @@
 // Kavach: a booking engine built to survive a stampede.
-// Core v1.9: adds restart recovery (the event log replays on boot, so held
+// Core v2.0: adds multi-node mode (seat-range sharding: every node owns a
+// disjoint slice of the inventory, requests forward around the ring when a
+// node's slice runs out, so a cluster scales horizontally with the same
+// never-double-sell guarantee and NO Redis dependency) on top of v1.9: restart recovery (the event log replays on boot, so held
 // seats, reservations, waitlist positions and id counters survive a crash)
 // and built-in chaos injection (random worker stalls, CONTAINED worker
 // panics that a single recover() absorbs) on top of v1.8: waitlist mode
@@ -50,12 +53,15 @@ const (
 
 type Inventory struct {
 	seats  []int32
+	offset int // first GLOBAL seat index this slice owns (cluster mode)
 	cursor uint64
 	sold   int64
 	held   int64
 }
 
-func NewInventory(n int) *Inventory { return &Inventory{seats: make([]int32, n)} }
+func NewInventory(n, offset int) *Inventory {
+	return &Inventory{seats: make([]int32, n), offset: offset}
+}
 
 // tryTake atomically locks n seats, or returns nil when not enough are free.
 // A compare-and-swap on each seat means two workers can never hold the same seat.
@@ -79,13 +85,18 @@ func (inv *Inventory) tryTake(n int) []int {
 		return nil
 	}
 	atomic.AddInt64(&inv.held, int64(n))
-	return picked
+	out := make([]int, len(picked))
+	for i, idx := range picked {
+		out[i] = idx + inv.offset // callers speak in GLOBAL seat indices
+	}
+	return out
 }
 
-// commit moves held seats to sold (the confirm step).
+// commit moves held seats to sold (the confirm step). Seats arrive as
+// GLOBAL indices; the offset maps them onto this node's slice.
 func (inv *Inventory) commit(seats []int) {
-	for _, idx := range seats {
-		atomic.StoreInt32(&inv.seats[idx], seatSold)
+	for _, s := range seats {
+		atomic.StoreInt32(&inv.seats[s-inv.offset], seatSold)
 	}
 	atomic.AddInt64(&inv.sold, int64(len(seats)))
 	atomic.AddInt64(&inv.held, -int64(len(seats)))
@@ -93,10 +104,44 @@ func (inv *Inventory) commit(seats []int) {
 
 // release returns held seats to the free pool (cancel or expiry).
 func (inv *Inventory) release(seats []int) {
-	for _, idx := range seats {
-		atomic.CompareAndSwapInt32(&inv.seats[idx], seatHeld, seatFree)
+	for _, s := range seats {
+		atomic.CompareAndSwapInt32(&inv.seats[s-inv.offset], seatHeld, seatFree)
 	}
 	atomic.AddInt64(&inv.held, -int64(len(seats)))
+}
+
+// markSold/markHeld/freeHeld apply global seat indices outside the normal
+// take/commit path; restart recovery replays through them.
+func (inv *Inventory) markSold(seats []int) {
+	fromHeld := int64(0)
+	for _, s := range seats {
+		i := s - inv.offset
+		if atomic.SwapInt32(&inv.seats[i], seatSold) == seatHeld {
+			fromHeld++ // this seat was replayed as a hold first: stop counting it held
+		}
+	}
+	atomic.AddInt64(&inv.sold, int64(len(seats)))
+	atomic.AddInt64(&inv.held, -fromHeld)
+}
+
+func (inv *Inventory) markHeld(seats []int) {
+	n := int64(0)
+	for _, s := range seats {
+		if atomic.CompareAndSwapInt32(&inv.seats[s-inv.offset], seatFree, seatHeld) {
+			n++
+		}
+	}
+	atomic.AddInt64(&inv.held, n)
+}
+
+func (inv *Inventory) freeHeld(seats []int) {
+	n := int64(0)
+	for _, s := range seats {
+		if atomic.CompareAndSwapInt32(&inv.seats[s-inv.offset], seatHeld, seatFree) {
+			n++
+		}
+	}
+	atomic.AddInt64(&inv.held, -n)
 }
 
 func (inv *Inventory) stats() (total, sold, held int) {
@@ -694,10 +739,7 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 	for _, ev := range events {
 		switch {
 		case ev.kind == "" && ev.bookingID != "": // a confirmed /book booking
-			for _, idx := range ev.seats {
-				atomic.StoreInt32(&inv.seats[idx], seatSold)
-			}
-			atomic.AddInt64(&inv.sold, int64(len(ev.seats)))
+			inv.markSold(ev.seats)
 			if idNum(ev.bookingID) > *bid {
 				*bid = idNum(ev.bookingID)
 			}
@@ -717,10 +759,7 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 			}
 			res.put(&Reservation{ID: ev.resID, Tenant: ev.tenant, User: ev.user,
 				Seats: ev.seats, ExpiresAt: expires, State: resHeld}, "")
-			for _, idx := range ev.seats {
-				atomic.CompareAndSwapInt32(&inv.seats[idx], seatFree, seatHeld)
-			}
-			atomic.AddInt64(&inv.held, int64(len(ev.seats)))
+			inv.markHeld(ev.seats)
 			if idNum(ev.resID) > *rid {
 				*rid = idNum(ev.resID)
 			}
@@ -736,10 +775,7 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 			if r, ok := res.get(ev.resID); ok {
 				atomic.StoreInt32(&r.State, stateFromName[ev.kind])
 			}
-			for _, idx := range ev.seats {
-				atomic.CompareAndSwapInt32(&inv.seats[idx], seatHeld, seatFree)
-			}
-			atomic.AddInt64(&inv.held, -int64(len(ev.seats)))
+			inv.freeHeld(ev.seats)
 		case ev.kind == "waitlisted":
 			owner := ev.user // waitlist events carry user_id, hold events carry user
 			if ev.userID != "" {
@@ -793,6 +829,9 @@ type Engine struct {
 	chaosStallMs int
 	chaosProb    float64
 	chaosPanic   float64
+	peers        []string
+	selfIdx      int
+	httpc        *http.Client
 
 	received     int64
 	ipLimited    int64
@@ -815,6 +854,7 @@ type Engine struct {
 	webhookFailed int64
 	chaosStalls   int64
 	chaosPanics   int64
+	forwarded     int64
 	lat          *LatencyRing
 	started      time.Time
 }
@@ -970,7 +1010,7 @@ func (e *Engine) handleWaitlistJoin(w http.ResponseWriter, r *http.Request) {
 		IdemKey string `json:"idempotency_key"`
 		Seats   int    `json:"seats"`
 	}
-	tenant, ok := e.precheck(w, r, &req)
+	tenant, _, ok := e.precheck(w, r, &req)
 	if !ok {
 		return
 	}
@@ -1046,7 +1086,7 @@ func (e *Engine) handleWaitlistCancel(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		WaitlistID string `json:"waitlist_id"`
 	}
-	tenant, ok := e.precheck(w, r, &req)
+	tenant, _, ok := e.precheck(w, r, &req)
 	if !ok {
 		return
 	}
@@ -1095,14 +1135,60 @@ func (e *Engine) clientIP(r *http.Request) string {
 	return host
 }
 
+// ---------- multi-node: seat-range sharding with ring forwarding ----------
+
+// forwardFor sends the caller's original request (raw body plus auth
+// headers) around the ring of peers. The OWNING node answers: its own
+// idempotency store and its own seat slice make a forwarded retry resolve
+// to the same outcome as the original attempt, so a lost response can
+// never become a second booking.
+func (e *Engine) forwardFor(r *http.Request, path, method string, rawBody []byte, query string) (int, []byte, bool) {
+	if len(e.peers) <= 1 {
+		return 0, nil, false
+	}
+	for k := 1; k < len(e.peers); k++ {
+		peer := e.peers[(e.selfIdx+k)%len(e.peers)]
+		u := "http://" + peer + path
+		if query != "" {
+			u += "?" + query
+		}
+		var rd io.Reader
+		if rawBody != nil {
+			rd = bytes.NewReader(rawBody)
+		}
+		req, err := http.NewRequest(method, u, rd)
+		if err != nil {
+			continue
+		}
+		if rawBody != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		for _, h := range []string{"Authorization", "X-Kavach-Timestamp", "X-Kavach-Request-Id", "X-Kavach-Signature"} {
+			if v := r.Header.Get(h); v != "" {
+				req.Header.Set(h, v)
+			}
+		}
+		req.Header.Set("X-Kavach-Forwarded-By", fmt.Sprintf("node%d", e.selfIdx))
+		resp, err := e.httpc.Do(req)
+		if err != nil {
+			continue // peer down: try the next one in the ring
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		atomic.AddInt64(&e.forwarded, 1)
+		return resp.StatusCode, b, true
+	}
+	return 0, nil, false
+}
+
 // precheck runs the shared front half of every write endpoint: method,
 // bounded body read, authentication, strict schema validation, the layered
 // rate limits, and the global in-flight gate. It returns the tenant, the
 // parsed request, and an ok flag (a response was already written when false).
-func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{}) (string, bool) {
+func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{}) (string, []byte, bool) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return "", false
+		return "", nil, false
 	}
 	atomic.AddInt64(&e.received, 1)
 	r.Body = http.MaxBytesReader(w, r.Body, 16384) // bounded input
@@ -1110,7 +1196,7 @@ func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{
 	if err != nil {
 		atomic.AddInt64(&e.errors, 1)
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
-		return "", false
+		return "", nil, false
 	}
 	tenant, st, msg := e.auth.verify(r, body)
 	if st != 0 {
@@ -1121,29 +1207,31 @@ func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, st, Result{Status: msg})
-		return "", false
+		return "", nil, false
 	}
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	dec.DisallowUnknownFields() // strict schema: reject, never sanitize silently
 	if err := dec.Decode(dst); err != nil {
 		atomic.AddInt64(&e.errors, 1)
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
-		return "", false
+		return "", nil, false
 	}
-	if !e.ipLim.Allow(e.clientIP(r)) { // layer 1: per IP, absorbs botnets
+	// cluster peers forward through the limiter on purpose: the caller was
+	// already limited at the edge node; everything else is still checked
+	if r.Header.Get("X-Kavach-Forwarded-By") == "" && !e.ipLim.Allow(e.clientIP(r)) {
 		atomic.AddInt64(&e.ipLimited, 1)
 		w.Header().Set("Retry-After", "2")
 		writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
-		return "", false
+		return "", nil, false
 	}
 	if n := atomic.AddInt64(&e.inFlight, 1); n > 500000 { // global capacity gate
 		atomic.AddInt64(&e.inFlight, -1)
 		atomic.AddInt64(&e.overloaded, 1)
 		w.Header().Set("Retry-After", "5")
 		writeJSON(w, http.StatusServiceUnavailable, Result{Status: "overloaded"})
-		return "", false
+		return "", nil, false
 	}
-	return tenant, true
+	return tenant, body, true
 }
 
 func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
@@ -1152,7 +1240,7 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 		IdemKey string `json:"idempotency_key"`
 		Seats   int    `json:"seats"`
 	}
-	tenant, ok := e.precheck(w, r, &req)
+	tenant, body, ok := e.precheck(w, r, &req)
 	if !ok {
 		return
 	}
@@ -1183,6 +1271,14 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 	select {
 	case res := <-j.resp:
 		e.lat.add(time.Since(t0).Microseconds())
+		if res.Status == "sold_out" && len(e.peers) > 1 { // this slice is done: ask the ring
+			if code, body, ok := e.forwardFor(r, "/book", http.MethodPost, body, ""); ok {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(code)
+				w.Write(body)
+				return
+			}
+		}
 		if res.Status == "error" { // a contained worker panic
 			writeJSON(w, http.StatusInternalServerError, res)
 			return
@@ -1204,7 +1300,7 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 		IdemKey string `json:"idempotency_key"`
 		Seats   int    `json:"seats"`
 	}
-	tenant, ok := e.precheck(w, r, &req)
+	tenant, body, ok := e.precheck(w, r, &req)
 	if !ok {
 		return
 	}
@@ -1237,6 +1333,14 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 	seats := e.inv.tryTake(req.Seats)
 	if seats == nil {
 		atomic.AddInt64(&e.soldOut, 1)
+		if len(e.peers) > 1 { // this slice is done: ask the ring
+			if code, respBody, ok := e.forwardFor(r, "/reserve", http.MethodPost, body, ""); ok {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(code)
+				w.Write(respBody)
+				return
+			}
+		}
 		writeJSON(w, http.StatusOK, Result{Status: "sold_out"})
 		return
 	}
@@ -1272,13 +1376,21 @@ func (e *Engine) handleConfirm(w http.ResponseWriter, r *http.Request) {
 		ReservationID string `json:"reservation_id"`
 		User          string `json:"user_id"`
 	}
-	tenant, ok := e.precheck(w, r, &req)
+	tenant, body, ok := e.precheck(w, r, &req)
 	if !ok {
 		return
 	}
 	defer atomic.AddInt64(&e.inFlight, -1)
 	res, found := e.res.get(req.ReservationID)
 	if !found || res.Tenant != tenant { // 404 both ways: never leak existence
+		if len(e.peers) > 1 { // another node may own this hold
+			if code, respBody, ok := e.forwardFor(r, "/confirm", http.MethodPost, body, ""); ok {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(code)
+				w.Write(respBody)
+				return
+			}
+		}
 		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
 		return
 	}
@@ -1316,13 +1428,21 @@ func (e *Engine) handleRelease(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ReservationID string `json:"reservation_id"`
 	}
-	tenant, ok := e.precheck(w, r, &req)
+	tenant, body, ok := e.precheck(w, r, &req)
 	if !ok {
 		return
 	}
 	defer atomic.AddInt64(&e.inFlight, -1)
 	res, found := e.res.get(req.ReservationID)
 	if !found || res.Tenant != tenant {
+		if len(e.peers) > 1 { // another node may own this hold
+			if code, respBody, ok := e.forwardFor(r, "/release", http.MethodPost, body, ""); ok {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(code)
+				w.Write(respBody)
+				return
+			}
+		}
 		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
 		return
 	}
@@ -1367,6 +1487,14 @@ func (e *Engine) handleReservation(w http.ResponseWriter, r *http.Request) {
 	}
 	res, found := e.res.get(id)
 	if !found || res.Tenant != tenant {
+		if len(e.peers) > 1 { // another node may own this hold
+			if code, respBody, ok := e.forwardFor(r, "/reservation", http.MethodGet, nil, "id="+id); ok {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(code)
+				w.Write(respBody)
+				return
+			}
+		}
 		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
 		return
 	}
@@ -1414,12 +1542,50 @@ func (e *Engine) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, entry.Result)
 		return
 	}
+	if len(e.peers) > 1 { // another node may own this booking
+		if code, respBody, ok := e.forwardFor(r, "/status", http.MethodGet, nil, "idempotency_key="+key); ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			w.Write(respBody)
+			return
+		}
+	}
 	writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
 }
 
 func (e *Engine) handleSeats(w http.ResponseWriter, r *http.Request) {
 	total, sold, held := e.inv.stats()
-	writeJSON(w, http.StatusOK, map[string]int{"total": total, "sold": sold, "held": held, "free": total - sold - held})
+	local := map[string]int{"total": total, "sold": sold, "held": held, "free": total - sold - held}
+	if len(e.peers) <= 1 || r.URL.Query().Get("local") == "1" {
+		writeJSON(w, http.StatusOK, local)
+		return
+	}
+	// cluster view: every node's local slice, summed. Same shape as before,
+	// plus a per-node breakdown so you can see the sharding work.
+	agg := map[string]int{"total": 0, "sold": 0, "held": 0, "free": 0}
+	nodes := map[string]map[string]int{}
+	add := func(name string, m map[string]int) {
+		nodes[name] = m
+		for _, k := range []string{"total", "sold", "held", "free"} {
+			agg[k] += m[k]
+		}
+	}
+	add(e.peers[e.selfIdx], local)
+	for k := 1; k < len(e.peers); k++ {
+		peer := e.peers[(e.selfIdx+k)%len(e.peers)]
+		resp, err := e.httpc.Get("http://" + peer + "/seats?local=1")
+		if err != nil {
+			continue // a down node just drops out of the sum
+		}
+		var m map[string]int
+		json.NewDecoder(resp.Body).Decode(&m)
+		resp.Body.Close()
+		add(peer, m)
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"cluster": true, "total": agg["total"], "sold": agg["sold"],
+		"held": agg["held"], "free": agg["free"], "nodes": nodes,
+	})
 }
 
 func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -1446,6 +1612,7 @@ func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"waitlist_cancelled":  atomic.LoadInt64(&e.waitCancelled),
 		"webhook_sent":        atomic.LoadInt64(&e.webhookSent),
 		"webhook_failed":      atomic.LoadInt64(&e.webhookFailed),
+		"forwarded":           atomic.LoadInt64(&e.forwarded),
 		"chaos_stalls":        atomic.LoadInt64(&e.chaosStalls),
 		"chaos_panics":        atomic.LoadInt64(&e.chaosPanics),
 		"latency_ms":        map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
@@ -1462,6 +1629,7 @@ func main() {
 	holdTTL := flag.Int("hold-ttl", 300, "reservation hold time-to-live in seconds")
 	waitCap := flag.Int("waitlist-cap", 100000, "maximum waitlist entries")
 	webhookURL := flag.String("webhook-url", "", "POST waitlist_fulfilled events to this URL")
+	peersSpec := flag.String("peers", "", "cluster: comma-separated addr:port of EVERY node including this one (seat-range sharding; empty = single node)")
 	chaosStallMs := flag.Int("chaos-stall-ms", 0, "chaos: inject random worker stalls up to this many ms (0 = off)")
 	chaosProb := flag.Float64("chaos-prob", 0, "chaos: probability a request hits a stall")
 	chaosPanic := flag.Float64("chaos-panic", 0, "chaos: probability a worker panics (contained; the engine survives)")
@@ -1473,8 +1641,38 @@ func main() {
 	ipBurst := flag.Float64("ip-burst", 40, "per-IP burst")
 	flag.Parse()
 
+	var peers []string
+	selfIdx := 0
+	if *peersSpec != "" {
+		portOf := func(x string) string {
+			if _, port, err := net.SplitHostPort(x); err == nil {
+				return port
+			}
+			return strings.TrimPrefix(x, ":")
+		}
+		for _, p := range strings.Split(*peersSpec, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				peers = append(peers, p)
+			}
+		}
+		found := false
+		for i, p := range peers {
+			if portOf(p) == portOf(*addr) {
+				selfIdx, found = i, true
+				break
+			}
+		}
+		if !found {
+			log.Fatalf("this node's addr %s is not in -peers", *addr)
+		}
+	}
+	offset := 0
+	if len(peers) > 1 {
+		offset = selfIdx * *seats // this node owns seats [offset, offset+seats)
+	}
+
 	e := &Engine{
-		inv:      NewInventory(*seats),
+		inv:      NewInventory(*seats, offset),
 		userLim:  NewLimiter(*userRate, *userBurst),
 		ipLim:    NewLimiter(*ipRate, *ipBurst),
 		auth:     NewAuth(*apiKeys, *secret),
@@ -1490,6 +1688,9 @@ func main() {
 		chaosStallMs: *chaosStallMs,
 		chaosProb:    *chaosProb,
 		chaosPanic:   *chaosPanic,
+		peers:        peers,
+		selfIdx:      selfIdx,
+		httpc:        &http.Client{Timeout: 5 * time.Second},
 		started:  time.Now(),
 	}
 	// restart recovery: replay the append-only logs BEFORE accepting traffic
@@ -1497,6 +1698,18 @@ func main() {
 		e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
 	if bRec+rRec+wRec > 0 {
 		log.Printf("kavach recovery: %d bookings, %d reservations, %d waitlist entries restored", bRec, rRec, wRec)
+	}
+	if len(peers) > 1 { // disjoint ID ranges per node: BK/RSV/WL ids never collide across the cluster
+		floor := uint64(selfIdx) * 10000000
+		if e.bid < floor {
+			e.bid = floor
+		}
+		if e.rid < floor {
+			e.rid = floor
+		}
+		if waitlistSeq < floor {
+			waitlistSeq = floor
+		}
 	}
 	bookGC, err := NewGroupCommit(*logPath, 200000)
 	if err != nil {
@@ -1567,6 +1780,6 @@ func main() {
 	if e.auth.enabled {
 		mode = "authenticated"
 	}
-	log.Printf("kavach engine on %s: %d seats, %d workers, %d CPUs, hold-ttl=%ds, mode=%s", *addr, *seats, *workers, runtime.NumCPU(), *holdTTL, mode)
+	log.Printf("kavach engine on %s: %d seats (slice offset %d), %d workers, %d CPUs, hold-ttl=%ds, mode=%s, peers=%d", *addr, *seats, offset, *workers, runtime.NumCPU(), *holdTTL, mode, len(peers))
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
