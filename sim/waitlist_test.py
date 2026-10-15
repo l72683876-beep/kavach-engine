@@ -41,6 +41,10 @@ def check(name, ok, detail=""):
     results.append((name, ok))
     print(("PASS  " if ok else "FAIL  ") + name + (("  " + detail) if detail else ""))
 
+# 0: joining while seats are free is refused; reserving directly is the tool
+st, d = request("POST", "/waitlist", {"user_id": "early", "idempotency_key": "early-1", "seats": 1})
+check("join while seats are free refused", st == 409 and d.get("status") == "seats_available", f"{st} {d}")
+
 # setup: fill every seat so the waitlist is the only way in
 seats0 = request("GET", "/seats")[1]
 reserves = {}

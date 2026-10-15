@@ -1,7 +1,10 @@
 // Kavach: a booking engine built to survive a stampede.
-// Core v1.8: adds waitlist mode (sold out? join a FIFO queue; freed seats
-// go to the front of the line automatically, with optional webhook
-// notifications) on top of v1.7: group commit (concurrent writes share one
+// Core v1.9: adds restart recovery (the event log replays on boot, so held
+// seats, reservations, waitlist positions and id counters survive a crash)
+// and built-in chaos injection (random worker stalls, CONTAINED worker
+// panics that a single recover() absorbs) on top of v1.8: waitlist mode
+// (sold out? join a FIFO queue; freed seats go to the front of the line
+// automatically, with optional webhook notifications) on top of v1.7: group commit (concurrent writes share one
 // fsync; the persist-before-ack guarantee is unchanged) on top of core v1.6 (Milestone 2):
 // the hold/confirm reservation lifecycle
 // (reserve with a TTL, confirm, release, an expiry worker that returns
@@ -24,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -473,6 +477,19 @@ func (w *Waitlist) cancel(id, tenant string) (*WaitEntry, bool) {
 	return nil, false
 }
 
+// remove drops an entry by id regardless of tenant (replay uses it).
+func (w *Waitlist) remove(id string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i, e := range w.order {
+		if e.ID == id {
+			w.order = append(w.order[:i], w.order[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 // listFor returns the caller's live entries with their 1-based positions.
 func (w *Waitlist) listFor(tenant, user string) []*WaitEntry {
 	w.mu.Lock()
@@ -554,7 +571,9 @@ type GroupCommit struct {
 }
 
 func NewGroupCommit(path string, queue int) (*GroupCommit, error) {
-	f, err := os.Create(path)
+	// append mode: the log survives restarts (recovery replays it), so a
+	// boot must never truncate it
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -597,6 +616,151 @@ func (g *GroupCommit) commit(line string) {
 	<-r.done
 }
 
+// ---------- restart recovery: the event log is the source of truth ----------
+
+// replayLogs rebuilds live state from the append-only logs: sold and held
+// seats, every reservation with its final state, live waitlist entries, and
+// the id counters. Events apply in timestamp order, so the state after a
+// crash is exactly the state before it. Returns (bookings, reservations,
+// waitlist entries) restored. Logs written before v1.9 carry no expiry;
+// those holds get a fresh TTL on recovery.
+func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore,
+	wl *Waitlist, idem *IdemStore, holdTTL time.Duration,
+	bid, rid, waitlistSeq *uint64) (int, int, int) {
+
+	type event struct {
+		kind      string
+		ts        int64
+		bookingID string
+		key       string
+		userID    string
+		resID     string
+		tenant    string
+		user      string
+		seats     []int
+		wlID      string
+		wlSeats   int
+		expiresAt int64
+	}
+	var events []event
+	readLog := func(path string) {
+		f, err := os.Open(path)
+		if err != nil {
+			return // no log yet: a first boot
+		}
+		defer f.Close()
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var m map[string]interface{}
+			if json.Unmarshal(sc.Bytes(), &m) != nil {
+				continue
+			}
+			gs := func(k string) string { s, _ := m[k].(string); return s }
+			gf := func(k string) float64 { f, _ := m[k].(float64); return f }
+			gi := func(k string) []int {
+				arr, _ := m[k].([]interface{})
+				out := make([]int, 0, len(arr))
+				for _, v := range arr {
+					f, _ := v.(float64)
+					out = append(out, int(f))
+				}
+				return out
+			}
+			events = append(events, event{
+				kind: gs("event"), ts: int64(gf("ts")), bookingID: gs("booking_id"),
+				resID: gs("reservation_id"), tenant: gs("tenant"), user: gs("user"),
+				userID: gs("user_id"),
+				seats: gi("seats"), wlID: gs("waitlist_id"), wlSeats: int(gf("seats")),
+				key: gs("key"), expiresAt: int64(gf("expires_at")),
+			})
+		}
+	}
+	readLog(bookPath)
+	readLog(holdPath)
+	sort.Slice(events, func(i, j int) bool { return events[i].ts < events[j].ts })
+
+	idNum := func(id string) uint64 {
+		if len(id) > 2 {
+			if n, err := strconv.Atoi(id[2:]); err == nil {
+				return uint64(n)
+			}
+		}
+		return 0
+	}
+	stateFromName := map[string]int32{"released": resReleased, "expired": resExpired}
+
+	bookings, reservations, queued := 0, 0, 0
+	for _, ev := range events {
+		switch {
+		case ev.kind == "" && ev.bookingID != "": // a confirmed /book booking
+			for _, idx := range ev.seats {
+				atomic.StoreInt32(&inv.seats[idx], seatSold)
+			}
+			atomic.AddInt64(&inv.sold, int64(len(ev.seats)))
+			if idNum(ev.bookingID) > *bid {
+				*bid = idNum(ev.bookingID)
+			}
+			if ev.key != "" { // the retry-safety guarantee survives restarts too
+				fp := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%d", ev.key, len(ev.seats)))))
+				idem.mu.Lock()
+				idem.m[ev.tenant+"|"+ev.key] = &idemEntry{
+					Fingerprint: fp, Tenant: ev.tenant, LastSeen: time.Now(),
+					Result: Result{Status: "confirmed", Seats: ev.seats, BookingID: ev.bookingID}}
+				idem.mu.Unlock()
+			}
+			bookings++
+		case ev.kind == "reserved":
+			expires := time.Now().Add(holdTTL)
+			if ev.expiresAt > 0 {
+				expires = time.Unix(0, ev.expiresAt)
+			}
+			res.put(&Reservation{ID: ev.resID, Tenant: ev.tenant, User: ev.user,
+				Seats: ev.seats, ExpiresAt: expires, State: resHeld}, "")
+			for _, idx := range ev.seats {
+				atomic.CompareAndSwapInt32(&inv.seats[idx], seatFree, seatHeld)
+			}
+			atomic.AddInt64(&inv.held, int64(len(ev.seats)))
+			if idNum(ev.resID) > *rid {
+				*rid = idNum(ev.resID)
+			}
+			reservations++
+		case ev.kind == "confirmed":
+			// the seats were already counted sold by the booking line;
+			// here only the reservation's own state and id matter
+			if r, ok := res.get(ev.resID); ok {
+				r.transition(resHeld, resConfirmed)
+				r.BookingID = ev.bookingID
+			}
+		case ev.kind == "released" || ev.kind == "expired":
+			if r, ok := res.get(ev.resID); ok {
+				atomic.StoreInt32(&r.State, stateFromName[ev.kind])
+			}
+			for _, idx := range ev.seats {
+				atomic.CompareAndSwapInt32(&inv.seats[idx], seatHeld, seatFree)
+			}
+			atomic.AddInt64(&inv.held, -int64(len(ev.seats)))
+		case ev.kind == "waitlisted":
+			owner := ev.user // waitlist events carry user_id, hold events carry user
+			if ev.userID != "" {
+				owner = ev.userID
+			}
+			e := &WaitEntry{ID: ev.wlID, Tenant: ev.tenant, User: owner,
+				Seats: ev.wlSeats, QueuedAt: time.Unix(0, ev.ts)}
+			wl.mu.Lock()
+			wl.order = append(wl.order, e)
+			wl.mu.Unlock()
+			if idNum(ev.wlID) > *waitlistSeq {
+				*waitlistSeq = idNum(ev.wlID)
+			}
+			queued++
+		case ev.kind == "waitlist_cancelled" || ev.kind == "waitlist_fulfilled":
+			wl.remove(ev.wlID)
+		}
+	}
+	return bookings, reservations, queued
+}
+
 // ---------- the engine ----------
 
 type job struct {
@@ -616,8 +780,8 @@ type Engine struct {
 	idem     *IdemStore
 	res      *ReservationStore
 	queue    chan *job
-	bookGC   *GroupCommit
-	holdGC   *GroupCommit
+	bookGC *GroupCommit
+	holdGC *GroupCommit
 	bid      uint64
 	rid      uint64
 	inFlight int64
@@ -626,6 +790,9 @@ type Engine struct {
 	waitCap    int
 	webhookURL string
 	webhookCh  chan map[string]interface{}
+	chaosStallMs int
+	chaosProb    float64
+	chaosPanic   float64
 
 	received     int64
 	ipLimited    int64
@@ -646,6 +813,8 @@ type Engine struct {
 	waitCancelled int64
 	webhookSent   int64
 	webhookFailed int64
+	chaosStalls   int64
+	chaosPanics   int64
 	lat          *LatencyRing
 	started      time.Time
 }
@@ -653,9 +822,9 @@ type Engine struct {
 // appendLog writes, flushes, and fsyncs the booking BEFORE the caller may
 // acknowledge it: persist-before-ack. A confirmed response means the record
 // is on disk.
-func (e *Engine) appendLog(id, user string, seats []int) {
+func (e *Engine) appendLog(id, key, tenant, user string, seats []int) {
 	line, _ := json.Marshal(map[string]interface{}{
-		"booking_id": id, "user": user, "seats": seats, "ts": time.Now().UnixNano(),
+		"booking_id": id, "key": key, "tenant": tenant, "user": user, "seats": seats, "ts": time.Now().UnixNano(),
 	})
 	e.bookGC.commit(string(line))
 }
@@ -665,7 +834,7 @@ func (e *Engine) appendLog(id, user string, seats []int) {
 func (e *Engine) appendHold(event string, r *Reservation, bookingID string) {
 	line, _ := json.Marshal(map[string]interface{}{
 		"event": event, "reservation_id": r.ID, "tenant": r.Tenant, "user": r.User,
-		"seats": r.Seats, "booking_id": bookingID, "ts": time.Now().UnixNano(),
+		"seats": r.Seats, "booking_id": bookingID, "expires_at": r.ExpiresAt.UnixNano(), "ts": time.Now().UnixNano(),
 	})
 	e.holdGC.commit(string(line))
 }
@@ -700,7 +869,7 @@ func (e *Engine) process(j *job) {
 		return
 	}
 	id := fmt.Sprintf("BK%08d", atomic.AddUint64(&e.bid, 1))
-	e.appendLog(id, j.user, seats) // durable BEFORE the ack leaves the process
+	e.appendLog(id, j.key, j.tenant, j.user, seats) // durable BEFORE the ack leaves the process
 	e.inv.commit(seats)
 	atomic.AddInt64(&e.confirmed, 1)
 	res := Result{Status: "confirmed", Seats: seats, BookingID: id}
@@ -708,9 +877,28 @@ func (e *Engine) process(j *job) {
 	j.resp <- res
 }
 
+// worker pulls from the admission queue. Chaos injection lives here: a
+// random stall (a slow downstream dependency) or a synthetic panic, always
+// contained by one recover() so a panicking worker can never take the
+// engine down. The job answers "error"; the process lives on.
 func (e *Engine) worker() {
 	for j := range e.queue {
-		e.process(j)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					atomic.AddInt64(&e.chaosPanics, 1)
+					j.resp <- Result{Status: "error"}
+				}
+			}()
+			if e.chaosProb > 0 && rand.Float64() < e.chaosProb {
+				atomic.AddInt64(&e.chaosStalls, 1)
+				time.Sleep(time.Duration(rand.Intn(e.chaosStallMs+1)) * time.Millisecond)
+			}
+			if e.chaosPanic > 0 && rand.Float64() < e.chaosPanic {
+				panic("kavach chaos injection")
+			}
+			e.process(j)
+		}()
 	}
 }
 
@@ -805,6 +993,13 @@ func (e *Engine) handleWaitlistJoin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.writeWaitEntry(w, http.StatusOK, prev)
+		return
+	}
+	// the waitlist exists for sold-out moments: with seats free, reserving
+	// directly is both faster and fairer
+	total, sold, held := e.inv.stats()
+	if total-sold-held >= req.Seats {
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "seats_available"})
 		return
 	}
 	entry := e.wl.join(tenant, req.IdemKey, req.User, req.Seats, e.waitCap)
@@ -988,6 +1183,10 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 	select {
 	case res := <-j.resp:
 		e.lat.add(time.Since(t0).Microseconds())
+		if res.Status == "error" { // a contained worker panic
+			writeJSON(w, http.StatusInternalServerError, res)
+			return
+		}
 		writeJSON(w, http.StatusOK, res)
 	case <-time.After(20 * time.Second):
 		e.lat.add(time.Since(t0).Microseconds())
@@ -1104,7 +1303,7 @@ func (e *Engine) handleConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	bookingID := fmt.Sprintf("BK%08d", atomic.AddUint64(&e.bid, 1))
 	res.BookingID = bookingID
-	e.appendLog(bookingID, res.User, res.Seats) // durable BEFORE the ack
+	e.appendLog(bookingID, "", res.Tenant, res.User, res.Seats) // durable BEFORE the ack
 	e.inv.commit(res.Seats)
 	atomic.AddInt64(&e.confirmed, 1)
 	atomic.AddInt64(&e.holdsConfirm, 1)
@@ -1247,6 +1446,8 @@ func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"waitlist_cancelled":  atomic.LoadInt64(&e.waitCancelled),
 		"webhook_sent":        atomic.LoadInt64(&e.webhookSent),
 		"webhook_failed":      atomic.LoadInt64(&e.webhookFailed),
+		"chaos_stalls":        atomic.LoadInt64(&e.chaosStalls),
+		"chaos_panics":        atomic.LoadInt64(&e.chaosPanics),
 		"latency_ms":        map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
 		"uptime_seconds":    time.Since(e.started).Seconds(),
 	})
@@ -1261,6 +1462,9 @@ func main() {
 	holdTTL := flag.Int("hold-ttl", 300, "reservation hold time-to-live in seconds")
 	waitCap := flag.Int("waitlist-cap", 100000, "maximum waitlist entries")
 	webhookURL := flag.String("webhook-url", "", "POST waitlist_fulfilled events to this URL")
+	chaosStallMs := flag.Int("chaos-stall-ms", 0, "chaos: inject random worker stalls up to this many ms (0 = off)")
+	chaosProb := flag.Float64("chaos-prob", 0, "chaos: probability a request hits a stall")
+	chaosPanic := flag.Float64("chaos-panic", 0, "chaos: probability a worker panics (contained; the engine survives)")
 	apiKeys := flag.String("api-keys", "", "API keys as key:tenant,key:tenant (empty = local mode, auth off)")
 	secret := flag.String("hmac-secret", "", "HMAC secret; when set, requests must be signed (X-Kavach-Timestamp, X-Kavach-Request-Id, X-Kavach-Signature over timestamp\\nrequest-id\\nbody)")
 	userRate := flag.Float64("user-rate", 2, "per-user requests/second (0 disables)")
@@ -1268,15 +1472,6 @@ func main() {
 	ipRate := flag.Float64("ip-rate", 20, "per-IP requests/second (0 disables)")
 	ipBurst := flag.Float64("ip-burst", 40, "per-IP burst")
 	flag.Parse()
-
-	bookGC, err := NewGroupCommit(*logPath, 200000)
-	if err != nil {
-		log.Fatal(err)
-	}
-	holdGC, err := NewGroupCommit(*holdsLog, 200000)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	e := &Engine{
 		inv:      NewInventory(*seats),
@@ -1286,16 +1481,33 @@ func main() {
 		idem:     NewIdemStore(),
 		res:      NewReservationStore(),
 		queue:    make(chan *job, 100000),
-		bookGC:   bookGC,
-		holdGC:   holdGC,
 		lat:      NewLatencyRing(1000000),
 		holdTTL:  time.Duration(*holdTTL) * time.Second,
 		wl:       NewWaitlist(),
 		waitCap:    *waitCap,
 		webhookURL: *webhookURL,
 		webhookCh:  make(chan map[string]interface{}, 10000),
+		chaosStallMs: *chaosStallMs,
+		chaosProb:    *chaosProb,
+		chaosPanic:   *chaosPanic,
 		started:  time.Now(),
 	}
+	// restart recovery: replay the append-only logs BEFORE accepting traffic
+	bRec, rRec, wRec := replayLogs(*logPath, *holdsLog, e.inv, e.res, e.wl, e.idem,
+		e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+	if bRec+rRec+wRec > 0 {
+		log.Printf("kavach recovery: %d bookings, %d reservations, %d waitlist entries restored", bRec, rRec, wRec)
+	}
+	bookGC, err := NewGroupCommit(*logPath, 200000)
+	if err != nil {
+		log.Fatal(err)
+	}
+	holdGC, err := NewGroupCommit(*holdsLog, 200000)
+	if err != nil {
+		log.Fatal(err)
+	}
+	e.bookGC = bookGC
+	e.holdGC = holdGC
 	for i := 0; i < *workers; i++ {
 		go e.worker()
 	}

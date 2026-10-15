@@ -112,6 +112,10 @@ same as bookings. 19-test acceptance suite: `sim/lifecycle_test.py`.
 
 ## Waitlist (v1.8)
 
+Joining is only for sold-out moments: with free seats on hand the engine
+answers `409 {"status": "seats_available"}` and points the client at a
+direct reservation.
+
 Sold out should not mean lost. When the inventory is empty, users join a FIFO
 waitlist instead of getting a dead end:
 
@@ -136,6 +140,42 @@ fulfilled user gets a live reservation automatically, and if the engine was
 started with `-webhook-url http://...`, a `waitlist_fulfilled` event is POSTed
 there (fire-and-forget; deliveries never block the request path).
 13-test acceptance suite: `sim/waitlist_test.py`.
+
+## Restart recovery (v1.9)
+
+The append-only logs are the source of truth. On boot the engine replays
+`bookings.jsonl` and `holds.jsonl` in timestamp order and rebuilds: sold and
+held seats, every reservation with its final state and its original expiry,
+live waitlist entries in their exact FIFO order, idempotency keys (a retry
+after a crash still returns the original booking), and the ID counters so new
+IDs never collide with pre-crash ones. A `SIGKILL` mid-run loses nothing that
+was acknowledged.
+
+```
+kavach recovery: 45 bookings, 46 reservations, 1 waitlist entries restored
+```
+
+Logs written before v1.9 carry no expiry timestamps; those holds get a fresh
+TTL on recovery.
+
+## Chaos, built in (v1.9)
+
+Real systems fail in the middle, not at the edges. Kavach can inject its own
+failures so you can watch it survive them:
+
+```bash
+./kavach -seats 2000 -chaos-prob 0.05 -chaos-stall-ms 700 -chaos-panic 0.04
+```
+
+- `-chaos-prob` + `-chaos-stall-ms`: a random slice of requests hits a stall
+  (a slow downstream dependency). Latency degrades; correctness does not.
+- `-chaos-panic`: workers panic at random. One `recover()` per job contains
+  it: the request gets a clean 500, the engine never dies from a single
+  panicking worker.
+
+`sim/chaos_test.py` runs a rush under both and proves the invariant holds:
+exactly the right seats sold, zero double-sells, process alive. Counters
+`chaos_stalls` and `chaos_panics` show on `/metrics`.
 
 ## Client SDKs: the real two lines
 
@@ -194,9 +234,11 @@ was the bottleneck in every run; the engine's own latency percentiles are server
 - Distributed mode: the v1 inventory is in one process (atomic CAS is the seat lock).
   The Redis-backed multi-node lock is the next milestone; the design is in the docs.
 - The event log is a local file. The write-behind database layer is designed but not wired.
-- Chaos v1 freezes the process; real chaos engineering kills stages independently.
-- Holds live in memory: a restart frees every hold (confirmed bookings are safe on disk;
-  the event log records what was held). The database layer is the fix.
+- Chaos v1 froze the whole process; v1.9 adds contained worker panics and random stalls.
+- A restart replays the append-only event log, so sold seats, live holds (with their
+  original expiry), waitlist positions and idempotency keys all come back exactly as
+  they were. Reservation objects still live in memory between restarts; the
+  write-behind database layer is the next step.
 
 ## Roadmap
 
@@ -204,7 +246,7 @@ was the bottleneck in every run; the engine's own latency percentiles are server
 2. Write-behind database layer (Postgres) replaying from the event log
 3. ~~Waitlist mode~~ shipped in v1.8
 4. ~~Client SDKs (Python, JavaScript)~~ shipped in v1.8
-5. Chaos v2: kill workers mid-run, not the whole process
+5. ~~Chaos v2~~ shipped in v1.9 (contained worker panics, random stalls)
 
 ## License
 
