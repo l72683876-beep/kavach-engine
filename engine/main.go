@@ -1,5 +1,8 @@
 // Kavach: a booking engine built to survive a stampede.
-// Core v2.0: adds multi-node mode (seat-range sharding: every node owns a
+// Core v2.1: adds Postgres write-behind (optional, via -pg-dsn and `go build -tags postgres`):
+// the local append-only logs stay the source of truth and a background tailer ships
+// every committed line to Postgres with a per-node cursor, so a crash between
+// insert and cursor update can never duplicate a row. On top of v2.0: multi-node mode (seat-range sharding: every node owns a
 // disjoint slice of the inventory, requests forward around the ring when a
 // node's slice runs out, so a cluster scales horizontally with the same
 // never-double-sell guarantee and NO Redis dependency) on top of v1.9: restart recovery (the event log replays on boot, so held
@@ -832,6 +835,8 @@ type Engine struct {
 	peers        []string
 	selfIdx      int
 	httpc        *http.Client
+	pgShipped    int64
+	pgFailed     int64
 
 	received     int64
 	ipLimited    int64
@@ -1622,6 +1627,8 @@ func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"webhook_sent":        atomic.LoadInt64(&e.webhookSent),
 		"webhook_failed":      atomic.LoadInt64(&e.webhookFailed),
 		"forwarded":           atomic.LoadInt64(&e.forwarded),
+		"pg_shipped":          atomic.LoadInt64(&e.pgShipped),
+		"pg_failed":           atomic.LoadInt64(&e.pgFailed),
 		"chaos_stalls":        atomic.LoadInt64(&e.chaosStalls),
 		"chaos_panics":        atomic.LoadInt64(&e.chaosPanics),
 		"latency_ms":        map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
@@ -1639,6 +1646,8 @@ func main() {
 	waitCap := flag.Int("waitlist-cap", 100000, "maximum waitlist entries")
 	webhookURL := flag.String("webhook-url", "", "POST waitlist_fulfilled events to this URL")
 	peersSpec := flag.String("peers", "", "cluster: comma-separated addr:port of EVERY node including this one (seat-range sharding; empty = single node)")
+	pgDSN := flag.String("pg-dsn", "", "Postgres write-behind: DSN to ship committed events to, e.g. postgres://user@host:5432/db?sslmode=disable (needs: go build -tags postgres)")
+	nodeID := flag.String("node-id", "n1", "identity of this node in the Postgres write-behind sink")
 	chaosStallMs := flag.Int("chaos-stall-ms", 0, "chaos: inject random worker stalls up to this many ms (0 = off)")
 	chaosProb := flag.Float64("chaos-prob", 0, "chaos: probability a request hits a stall")
 	chaosPanic := flag.Float64("chaos-panic", 0, "chaos: probability a worker panics (contained; the engine survives)")
@@ -1707,6 +1716,14 @@ func main() {
 		e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
 	if bRec+rRec+wRec > 0 {
 		log.Printf("kavach recovery: %d bookings, %d reservations, %d waitlist entries restored", bRec, rRec, wRec)
+	}
+	if *pgDSN != "" { // write-behind: the local logs stay the source of truth, Postgres mirrors them
+		sink, err := NewPgSink(*pgDSN, *nodeID, []string{*logPath, *holdsLog}, &e.pgShipped, &e.pgFailed)
+		if err != nil {
+			log.Fatalf("postgres sink: %v", err)
+		}
+		_ = sink
+		log.Printf("kavach write-behind: shipping %s and %s to Postgres (node %s)", *logPath, *holdsLog, *nodeID)
 	}
 	if len(peers) > 1 { // disjoint ID ranges per node: BK/RSV/WL ids never collide across the cluster
 		floor := uint64(selfIdx) * 10000000

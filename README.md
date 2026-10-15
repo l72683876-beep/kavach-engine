@@ -216,6 +216,39 @@ waitlist needs the shared-state milestone); `/metrics` is local; a forwarded req
 skips the peer's IP limiter (it was already limited at the entry node) while still
 passing full auth verification, so keep `-peers` on a private network.
 
+## Postgres write-behind (v2.1)
+
+The local append-only logs stay the source of truth. A booking is acknowledged
+after the LOCAL log is durable, exactly as before. With a Postgres sink enabled,
+a background tailer ships every committed line to Postgres, where SQL, dashboards
+and retention policies can work with it. Postgres never sits in the request path:
+if it is slow or down, the engine keeps serving and catches up when it returns.
+
+```bash
+cd engine && go build -tags postgres -o kavach_pg . && \
+./kavach_pg -pg-dsn "postgres://user@host:5432/db?sslmode=disable" -node-id n1
+```
+
+The default build (`go build -o kavach .`) stays dependency-free; only the
+`postgres` tag pulls in pgx v5 (pure Go, no cgo). The schema is created
+automatically:
+
+- `kavach_events(node_id, source, line_off, logged_at, data jsonb)`: one row per
+  committed log line, `data` being the event as JSON.
+- `kavach_ship_state(node_id, source, byte_offset)`: the resume cursor. A crash
+  between an insert and its cursor update re-inserts the same lines, and the
+  primary key turns that into a no-op: at-least-once shipping, exactly-once landing.
+
+Restart resumes from the stored cursor; the first boot against a fresh database
+ships the full history. `-node-id` names this node (matters in multi-node mode).
+Inspect the data without a psql install:
+
+```bash
+go run ./pgq "SELECT data->>'user_id', data->>'seats' FROM kavach_events WHERE source='bookings.jsonl' LIMIT 5"
+```
+
+Acceptance tests: `python3 sim/pg_test.py` (needs a live Postgres and `./kavach_pg`).
+
 ## Client SDKs: the real two lines
 
 ```python
@@ -273,17 +306,17 @@ was the bottleneck in every run; the engine's own latency percentiles are server
 - Shared-state mode: multi-node is seat-range sharding (each node owns a disjoint
   slice, shipped in v2.0). A Redis-backed shared store for global rate limiting and a
   cluster-wide waitlist is the next milestone; the design is in the docs.
-- The event log is a local file. The write-behind database layer is designed but not wired.
+- The event log is a local file by design. Postgres write-behind (v2.1) mirrors it for SQL and analytics; the file remains the source of truth.
 - Chaos v1 froze the whole process; v1.9 adds contained worker panics and random stalls.
 - A restart replays the append-only event log, so sold seats, live holds (with their
   original expiry), waitlist positions and idempotency keys all come back exactly as
   they were. Reservation objects still live in memory between restarts; the
-  write-behind database layer is the next step.
+  write-behind database layer shipped in v2.1.
 
 ## Roadmap
 
 1. Redis-backed distributed seat lock + multi-node mode
-2. Write-behind database layer (Postgres) replaying from the event log
+2. ~~Write-behind database layer (Postgres) replaying from the event log~~ shipped in v2.1
 3. ~~Waitlist mode~~ shipped in v1.8
 4. ~~Client SDKs (Python, JavaScript)~~ shipped in v1.8
 5. ~~Chaos v2~~ shipped in v1.9 (contained worker panics, random stalls)

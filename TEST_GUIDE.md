@@ -97,6 +97,15 @@ kill %1
   -ip-rate 0 -hold-ttl 10 -webhook-url http://127.0.0.1:9099/hook \
   -log wl.jsonl -holds-log wl_holds.jsonl &
 python3 sim/waitlist_test.py 8080
+
+**Step 9: Postgres write-behind (needs a Postgres server running)**
+
+```bash
+cd engine && go build -tags postgres -o kavach_pg . && \
+./kavach_pg -seats 50 -pg-dsn "postgres://user@host:5432/db?sslmode=disable" -node-id t1 \
+  -log pg_bookings.jsonl -holds-log pg_holds.jsonl &
+cd .. && python3 sim/pg_test.py 8200
+```
 kill %1
 ```
 
