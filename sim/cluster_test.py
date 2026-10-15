@@ -31,7 +31,8 @@ def start(node):
     p = subprocess.Popen(["./kavach", "-seats", "100", "-workers", "4", "-ip-rate", "0", "-user-rate", "0",
                           "-peers", PEERS, "-addr", f"127.0.0.1:{i}",
                           "-log", f"cl{node}_bookings.jsonl", "-holds-log", f"cl{node}_holds.jsonl"],
-                         cwd="engine", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                         cwd="engine", stdout=subprocess.DEVNULL,
+                         stderr=open(f"engine/cl{node}_stderr.log", "ab"))
     procs[node] = p
     time.sleep(0.7)
     return p
@@ -101,7 +102,7 @@ procs[1].send_signal(signal.SIGKILL)
 procs[1].wait()
 time.sleep(0.5)
 start(1)
-st, s = req(1, "GET", "/seats")
+st, s = req(1, "GET", "/seats?local=1")
 check("restarted node restored its slice", s.get("sold") == 100 and s.get("held") == 0 and s.get("free") == 0, s)
 st, s = req(0, "GET", "/seats")
 check("cluster totals survive a node restart",
