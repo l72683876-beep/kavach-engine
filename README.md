@@ -300,6 +300,7 @@ was the bottleneck in every run; the engine's own latency percentiles are server
 | Chaos | Engine process frozen mid-rush, then resumed | Recovered and finished with perfect accuracy; no data loss |
 | k6 cart flow, fsync per write (v1.6) | 200 users, reserve+confirm per iteration, k6 v0.54 | 229.7 req/s, p95 1.2 s, 0 failures, 0 duplicate seats |
 | k6 cart flow, group commit (v1.7) | Same workload, same box, only group commit changed | 2,276.6 req/s (9.9x), p95 139 ms, 0 failures, 0 duplicate seats |
+| k6 cart flow, v2.1 (single node) | Same workload, same box; a live Postgres shared the container during the run | 1,966.6 req/s, p95 157 ms, 0 failures, 0 duplicate seats |
 
 ## What v1 does not do yet (the honest list)
 
