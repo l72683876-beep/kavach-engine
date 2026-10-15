@@ -1,6 +1,8 @@
 // Kavach: a booking engine built to survive a stampede.
-// Core v1.7: adds group commit (concurrent writes share one fsync; the
-// persist-before-ack guarantee is unchanged) on top of core v1.6 (Milestone 2):
+// Core v1.8: adds waitlist mode (sold out? join a FIFO queue; freed seats
+// go to the front of the line automatically, with optional webhook
+// notifications) on top of v1.7: group commit (concurrent writes share one
+// fsync; the persist-before-ack guarantee is unchanged) on top of core v1.6 (Milestone 2):
 // the hold/confirm reservation lifecycle
 // (reserve with a TTL, confirm, release, an expiry worker that returns
 // abandoned holds to inventory atomically) on top of core v1.5:
@@ -13,6 +15,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -387,8 +390,8 @@ func (s *ReservationStore) put(r *Reservation, idemKey string) bool {
 	return true
 }
 
-// expired collects held reservations past their deadline; the caller then
-// transitions each one (outside the lock, single-winner CAS).
+// expire candidates collects held reservations past their deadline; the
+// caller then transitions each one (outside the lock, single-winner CAS).
 func (s *ReservationStore) expired(now time.Time) []*Reservation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -399,6 +402,106 @@ func (s *ReservationStore) expired(now time.Time) []*Reservation {
 		}
 	}
 	return out
+}
+
+// ---------- waitlist (sold out? join the queue) ----------
+
+// WaitEntry is one place in line. Entries are strictly FIFO: when seats free
+// up, the front of the line is served first; a front entry that needs more
+// seats than are free blocks the ones behind it (fairness over utilization).
+type WaitEntry struct {
+	ID       string
+	Tenant   string
+	User     string
+	Seats    int
+	pos      int // filled in by listFor
+	QueuedAt time.Time
+}
+
+var waitlistSeq uint64
+
+type Waitlist struct {
+	mu    sync.Mutex
+	order []*WaitEntry
+	idem  map[string]string // tenant|key -> waitlist id
+}
+
+func NewWaitlist() *Waitlist { return &Waitlist{idem: map[string]string{}} }
+
+// byIdem returns the live entry for an idempotency key, if it is still queued.
+func (w *Waitlist) byIdem(tenant, key string) (*WaitEntry, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	id, ok := w.idem[tenant+"|"+key]
+	if !ok {
+		return nil, false
+	}
+	for _, e := range w.order {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return nil, false // fulfilled or cancelled: the key is free again
+}
+
+// join appends to the line. Returns (nil) when the waitlist is full.
+func (w *Waitlist) join(tenant, key, user string, seats int, cap int) *WaitEntry {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.order) >= cap {
+		return nil
+	}
+	e := &WaitEntry{ID: fmt.Sprintf("WL%08d", atomic.AddUint64(&waitlistSeq, 1)), Tenant: tenant,
+		User: user, Seats: seats, QueuedAt: time.Now()}
+	w.order = append(w.order, e)
+	if key != "" {
+		w.idem[tenant+"|"+key] = e.ID
+	}
+	return e
+}
+
+// cancel removes an entry from the line. Tenant-scoped.
+func (w *Waitlist) cancel(id, tenant string) (*WaitEntry, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i, e := range w.order {
+		if e.ID == id && e.Tenant == tenant {
+			w.order = append(w.order[:i], w.order[i+1:]...)
+			return e, true
+		}
+	}
+	return nil, false
+}
+
+// listFor returns the caller's live entries with their 1-based positions.
+func (w *Waitlist) listFor(tenant, user string) []*WaitEntry {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var out []*WaitEntry
+	for pos, e := range w.order {
+		if e.Tenant == tenant && e.User == user {
+			e.pos = pos + 1
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// popReady serves the front of the line while the inventory can satisfy it.
+// The seats are taken atomically; the caller owns them from that moment.
+func (w *Waitlist) popReady(inv *Inventory) (*WaitEntry, []int, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for len(w.order) > 0 {
+		front := w.order[0]
+		seats := inv.tryTake(front.Seats)
+		if seats == nil {
+			return nil, nil, false // front blocked: FIFO discipline
+		}
+		w.order = w.order[1:]
+		return front, seats, true
+	}
+	return nil, nil, false
 }
 
 // ---------- latency sampling ----------
@@ -518,7 +621,11 @@ type Engine struct {
 	bid      uint64
 	rid      uint64
 	inFlight int64
-	holdTTL  time.Duration
+	holdTTL    time.Duration
+	wl         *Waitlist
+	waitCap    int
+	webhookURL string
+	webhookCh  chan map[string]interface{}
 
 	received     int64
 	ipLimited    int64
@@ -534,13 +641,18 @@ type Engine struct {
 	holdsConfirm int64
 	holdsRelease int64
 	holdsExpired int64
+	waitQueued   int64
+	waitFulfilled int64
+	waitCancelled int64
+	webhookSent   int64
+	webhookFailed int64
 	lat          *LatencyRing
 	started      time.Time
 }
 
-// appendLog hands the booking to the group committer: it returns only after
-// the batch containing this booking has been flushed and fsynced, and the
-// caller acknowledges only then (persist-before-ack, one sync per batch).
+// appendLog writes, flushes, and fsyncs the booking BEFORE the caller may
+// acknowledge it: persist-before-ack. A confirmed response means the record
+// is on disk.
 func (e *Engine) appendLog(id, user string, seats []int) {
 	line, _ := json.Marshal(map[string]interface{}{
 		"booking_id": id, "user": user, "seats": seats, "ts": time.Now().UnixNano(),
@@ -549,7 +661,7 @@ func (e *Engine) appendLog(id, user string, seats []int) {
 }
 
 // appendHold records a reservation lifecycle event (reserved/confirmed/
-// released/expired) with the same group-commit discipline.
+// released/expired) with the same persist-before-ack discipline.
 func (e *Engine) appendHold(event string, r *Reservation, bookingID string) {
 	line, _ := json.Marshal(map[string]interface{}{
 		"event": event, "reservation_id": r.ID, "tenant": r.Tenant, "user": r.User,
@@ -613,6 +725,165 @@ func (e *Engine) expireSweep() {
 			e.appendHold("expired", r, "")
 		}
 	}
+	e.serveWaitlist()
+}
+
+// notifyWebhook posts a fire-and-forget JSON event to the integrator's URL
+// if one is configured. It never blocks the request path: full or failing
+// deliveries are counted, never propagated.
+func (e *Engine) notifyWebhook(ev map[string]interface{}) {
+	if e.webhookURL == "" {
+		return
+	}
+	select {
+	case e.webhookCh <- ev:
+	default:
+		atomic.AddInt64(&e.webhookFailed, 1)
+	}
+}
+
+// serveWaitlist serves the front of the line while seats are free. Called
+// after every event that returns seats to the pool (expiry or release).
+func (e *Engine) serveWaitlist() {
+	for {
+		entry, seats, ok := e.wl.popReady(e.inv)
+		if !ok {
+			return
+		}
+		res := &Reservation{
+			ID:        fmt.Sprintf("RSV%08d", atomic.AddUint64(&e.rid, 1)),
+			Tenant:    entry.Tenant,
+			User:      entry.User,
+			Seats:     seats,
+			CreatedAt: time.Now(),
+			ExpiresAt: time.Now().Add(e.holdTTL),
+			State:     resHeld,
+		}
+		e.res.put(res, "") // no idempotency alias: the engine holds on their behalf
+		atomic.AddInt64(&e.holdsCreated, 1)
+		atomic.AddInt64(&e.waitFulfilled, 1)
+		e.appendHold("reserved", res, "")
+		e.appendWaitEvent("waitlist_fulfilled", entry)
+		e.notifyWebhook(map[string]interface{}{
+			"event":           "waitlist_fulfilled",
+			"waitlist_id":     entry.ID,
+			"reservation_id":  res.ID,
+			"tenant":          entry.Tenant,
+			"user_id":         entry.User,
+			"seats":           seats,
+			"hold_expires_at": res.ExpiresAt.Unix(),
+		})
+	}
+}
+
+func (e *Engine) handleWaitlistJoin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		User    string `json:"user_id"`
+		IdemKey string `json:"idempotency_key"`
+		Seats   int    `json:"seats"`
+	}
+	tenant, ok := e.precheck(w, r, &req)
+	if !ok {
+		return
+	}
+	defer atomic.AddInt64(&e.inFlight, -1)
+	if req.User == "" || req.IdemKey == "" || req.Seats < 1 || req.Seats > 4 {
+		atomic.AddInt64(&e.errors, 1)
+		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+		return
+	}
+	if !e.userLim.Allow(tenant + ":" + req.User) {
+		atomic.AddInt64(&e.userLimited, 1)
+		w.Header().Set("Retry-After", "2")
+		writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
+		return
+	}
+	if prev, found := e.wl.byIdem(tenant, req.IdemKey); found { // idempotent join
+		if prev.Seats != req.Seats { // same key, different payload: conflict
+			atomic.AddInt64(&e.conflicts, 1)
+			writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "idempotency_conflict"})
+			return
+		}
+		e.writeWaitEntry(w, http.StatusOK, prev)
+		return
+	}
+	entry := e.wl.join(tenant, req.IdemKey, req.User, req.Seats, e.waitCap)
+	if entry == nil {
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "waitlist_full"})
+		return
+	}
+	atomic.AddInt64(&e.waitQueued, 1)
+	e.appendWaitEvent("waitlisted", entry) // durable BEFORE the ack
+	e.writeWaitEntry(w, http.StatusOK, entry)
+}
+
+// handleWaitlistList: the caller's live entries with positions.
+func (e *Engine) handleWaitlistList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	tenant, st, msg := e.auth.verify(r, nil)
+	if st != 0 {
+		writeJSON(w, st, Result{Status: msg})
+		return
+	}
+	user := r.URL.Query().Get("user_id")
+	if user == "" {
+		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+		return
+	}
+	entries := e.wl.listFor(tenant, user)
+	type row struct {
+		WaitlistID string `json:"waitlist_id"`
+		Seats      int    `json:"seats"`
+		Position   int    `json:"position"`
+	}
+	rows := make([]row, 0, len(entries))
+	for _, en := range entries {
+		rows = append(rows, row{WaitlistID: en.ID, Seats: en.Seats, Position: en.pos})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "ok", "entries": rows})
+}
+
+// handleWaitlistCancel: leave the line before your turn comes.
+func (e *Engine) handleWaitlistCancel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		WaitlistID string `json:"waitlist_id"`
+	}
+	tenant, ok := e.precheck(w, r, &req)
+	if !ok {
+		return
+	}
+	defer atomic.AddInt64(&e.inFlight, -1)
+	entry, found := e.wl.cancel(req.WaitlistID, tenant)
+	if !found {
+		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
+		return
+	}
+	atomic.AddInt64(&e.waitCancelled, 1)
+	e.appendWaitEvent("waitlist_cancelled", entry)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "cancelled", "waitlist_id": entry.ID})
+}
+
+func (e *Engine) appendWaitEvent(event string, en *WaitEntry) {
+	line, _ := json.Marshal(map[string]interface{}{
+		"event": event, "waitlist_id": en.ID, "tenant": en.Tenant, "user_id": en.User,
+		"seats": en.Seats, "ts": time.Now().UnixNano(),
+	})
+	e.holdGC.commit(string(line))
+}
+
+func (e *Engine) writeWaitEntry(w http.ResponseWriter, code int, en *WaitEntry) {
+	pos := 0
+	for _, x := range e.wl.listFor(en.Tenant, en.User) {
+		if x.ID == en.ID {
+			pos = x.pos
+		}
+	}
+	writeJSON(w, code, map[string]interface{}{
+		"status": "queued", "waitlist_id": en.ID, "seats": en.Seats, "position": pos,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
@@ -630,8 +901,8 @@ func (e *Engine) clientIP(r *http.Request) string {
 }
 
 // precheck runs the shared front half of every write endpoint: method,
-// bounded body read, authentication, strict schema validation, the per-IP
-// rate limit, and the global in-flight gate. It returns the tenant, the
+// bounded body read, authentication, strict schema validation, the layered
+// rate limits, and the global in-flight gate. It returns the tenant, the
 // parsed request, and an ok flag (a response was already written when false).
 func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{}) (string, bool) {
 	if r.Method != http.MethodPost {
@@ -872,6 +1143,7 @@ func (e *Engine) handleRelease(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt64(&e.holdsRelease, 1)
 		e.appendHold("released", res, "")
 		e.writeReservation(w, http.StatusOK, res)
+		go e.serveWaitlist()
 		return
 	}
 	e.writeReservationState(w, res)
@@ -970,6 +1242,11 @@ func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"holds_confirmed":   atomic.LoadInt64(&e.holdsConfirm),
 		"holds_released":    atomic.LoadInt64(&e.holdsRelease),
 		"holds_expired":     atomic.LoadInt64(&e.holdsExpired),
+		"waitlist_queued":     atomic.LoadInt64(&e.waitQueued),
+		"waitlist_fulfilled":  atomic.LoadInt64(&e.waitFulfilled),
+		"waitlist_cancelled":  atomic.LoadInt64(&e.waitCancelled),
+		"webhook_sent":        atomic.LoadInt64(&e.webhookSent),
+		"webhook_failed":      atomic.LoadInt64(&e.webhookFailed),
 		"latency_ms":        map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
 		"uptime_seconds":    time.Since(e.started).Seconds(),
 	})
@@ -982,6 +1259,8 @@ func main() {
 	logPath := flag.String("log", "bookings.jsonl", "confirmed-booking event log path")
 	holdsLog := flag.String("holds-log", "holds.jsonl", "reservation lifecycle event log path")
 	holdTTL := flag.Int("hold-ttl", 300, "reservation hold time-to-live in seconds")
+	waitCap := flag.Int("waitlist-cap", 100000, "maximum waitlist entries")
+	webhookURL := flag.String("webhook-url", "", "POST waitlist_fulfilled events to this URL")
 	apiKeys := flag.String("api-keys", "", "API keys as key:tenant,key:tenant (empty = local mode, auth off)")
 	secret := flag.String("hmac-secret", "", "HMAC secret; when set, requests must be signed (X-Kavach-Timestamp, X-Kavach-Request-Id, X-Kavach-Signature over timestamp\\nrequest-id\\nbody)")
 	userRate := flag.Float64("user-rate", 2, "per-user requests/second (0 disables)")
@@ -1011,6 +1290,10 @@ func main() {
 		holdGC:   holdGC,
 		lat:      NewLatencyRing(1000000),
 		holdTTL:  time.Duration(*holdTTL) * time.Second,
+		wl:       NewWaitlist(),
+		waitCap:    *waitCap,
+		webhookURL: *webhookURL,
+		webhookCh:  make(chan map[string]interface{}, 10000),
 		started:  time.Now(),
 	}
 	for i := 0; i < *workers; i++ {
@@ -1034,12 +1317,37 @@ func main() {
 			e.expireSweep()
 		}
 	}()
+	go func() { // webhook poster: deliveries never block the request path
+		client := &http.Client{Timeout: 5 * time.Second}
+		for ev := range e.webhookCh {
+			b, _ := json.Marshal(ev)
+			resp, err := client.Post(e.webhookURL, "application/json", bytes.NewReader(b))
+			if err != nil {
+				atomic.AddInt64(&e.webhookFailed, 1)
+				continue
+			}
+			resp.Body.Close()
+			if resp.StatusCode < 300 {
+				atomic.AddInt64(&e.webhookSent, 1)
+			} else {
+				atomic.AddInt64(&e.webhookFailed, 1)
+			}
+		}
+	}()
 
 	http.HandleFunc("/book", e.handleBook)
 	http.HandleFunc("/reserve", e.handleReserve)
 	http.HandleFunc("/confirm", e.handleConfirm)
 	http.HandleFunc("/release", e.handleRelease)
 	http.HandleFunc("/reservation", e.handleReservation)
+	http.HandleFunc("/waitlist", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			e.handleWaitlistList(w, r)
+			return
+		}
+		e.handleWaitlistJoin(w, r)
+	})
+	http.HandleFunc("/waitlist/cancel", e.handleWaitlistCancel)
 	http.HandleFunc("/status", e.handleStatus)
 	http.HandleFunc("/seats", e.handleSeats)
 	http.HandleFunc("/metrics", e.handleMetrics)
