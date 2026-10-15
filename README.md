@@ -287,6 +287,15 @@ python sim/simulate.py --total 1000000 --concurrency 3000 --users 100000 --bots 
 python sim/verify.py engine/bookings.jsonl 5000
 ```
 
+## Watch it run (video evidence)
+
+Real recordings of live runs, not mockups: [demo/kavach_demo.mp4](demo/kavach_demo.mp4)
+shows a 12,000-request stampede on a 200-seat engine plus a mid-rush SIGKILL crash and
+log-replay recovery (zero double-sell throughout). [demo/kavach_big.mp4](demo/kavach_big.mp4)
+shows two sustained rounds, 1,000,000 and 2,000,000 requests (~18 minutes of continuous
+pressure, peak 3,077 req/s on a 2-core box, 0 errors, 0 double-sell). Details and honest
+caveats in [demo/README.md](demo/README.md).
+
 ## The report card (measured, not claimed)
 
 Hardware: one small container, 2 CPU cores, 4 GB RAM. The test client (Python/asyncio)
