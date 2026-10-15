@@ -1,0 +1,7 @@
+engine/kavach
+engine/bookings*.jsonl
+engine/*.log
+sim/run_*.json
+sim/*.log
+chaos.log
+__pycache__/
