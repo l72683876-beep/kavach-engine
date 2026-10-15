@@ -5,6 +5,10 @@ around the ring when a slice runs out, and the never-double-sell invariant
 must hold across ALL nodes."""
 import json, os, signal, subprocess, sys, time, urllib.request, urllib.error
 
+# a previous crashed run leaves engines holding its ports: clear the slate first
+subprocess.run(["pkill", "-x", "kavach"], capture_output=True)
+time.sleep(1.0)
+
 BASE_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8101
 N = 3
 PEERS = ",".join(f"127.0.0.1:{BASE_PORT+i}" for i in range(N))
@@ -20,11 +24,17 @@ def req(node, method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, method=method,
                                headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(r, timeout=15) as resp:
-            return resp.status, json.loads(resp.read() or b"{}")
-    except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b"{}")
+    last = None
+    for attempt in range(2):  # one retry: an idempotency key makes a retried write safe
+        try:
+            with urllib.request.urlopen(r, timeout=15) as resp:
+                return resp.status, json.loads(resp.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+        except urllib.error.URLError as e:
+            last = e
+            time.sleep(0.3)
+    raise last
 
 def start(node):
     i = BASE_PORT + node

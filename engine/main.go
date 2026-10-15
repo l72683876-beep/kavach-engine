@@ -1573,13 +1573,22 @@ func (e *Engine) handleSeats(w http.ResponseWriter, r *http.Request) {
 	add(e.peers[e.selfIdx], local)
 	for k := 1; k < len(e.peers); k++ {
 		peer := e.peers[(e.selfIdx+k)%len(e.peers)]
-		resp, err := e.httpc.Get("http://" + peer + "/seats?local=1")
-		if err != nil {
+		var m map[string]int
+		var lastErr error
+		for attempt := 0; attempt < 2; attempt++ { // a stale idle conn must not drop a live node from the view
+			resp, err := e.httpc.Get("http://" + peer + "/seats?local=1")
+			if err == nil {
+				json.NewDecoder(resp.Body).Decode(&m)
+				resp.Body.Close()
+				break
+			}
+			lastErr = err
+			time.Sleep(100 * time.Millisecond)
+		}
+		if m == nil {
+			log.Printf("kavach cluster: peer %s query failed: %v", peer, lastErr)
 			continue // a down node just drops out of the sum
 		}
-		var m map[string]int
-		json.NewDecoder(resp.Body).Decode(&m)
-		resp.Body.Close()
 		add(peer, m)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
