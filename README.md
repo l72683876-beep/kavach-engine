@@ -31,7 +31,7 @@ or the app hangs and users wait forever. Kavach is designed against those three 
 | Inventory cache | Seat map lives in memory, atomically updated | Reads never wait on the database |
 | Seat lock | Atomic CAS per seat | Two people fight for seat 42: exactly one wins |
 | Reservation lifecycle | Hold with a TTL, confirm, release, expiry worker | A cart is not a sale: seats return if payment never lands |
-| Event log | Append-only JSONL of every booking | The durable record; the source of truth for audits |
+| Event log | Append-only JSONL of every booking, group commit | The durable record; one fsync per batch of writes |
 | Metrics | Counters + latency percentiles at `/metrics` | You cannot fix what you cannot see |
 
 ## Quickstart (2 minutes)
@@ -120,14 +120,17 @@ python sim/simulate.py --users 20000 --concurrency 10000
 # sustained hammer: 1,000,000 requests with 10% bots
 python sim/simulate.py --total 1000000 --concurrency 3000 --users 100000 --bots 0.1
 
+# or the official k6 benchmark (grafana k6 v0.54)
+k6 run sim/k6_benchmark.js
+
 # prove no seat was ever double-sold
 python sim/verify.py engine/bookings.jsonl 5000
 ```
 
 ## The report card (measured, not claimed)
 
-Hardware: one small container, 2 CPU cores, 4 GB RAM. The test client (Python/asyncio)
-was the bottleneck in every run; the engine's own latency percentiles are server-side.
+Hardware: one small container, 2 CPU cores, 4 GB RAM. The k6 rows share the box
+between client and engine, so they are conservative.
 
 | Test | Load | Result |
 |---|---|---|
@@ -135,6 +138,8 @@ was the bottleneck in every run; the engine's own latency percentiles are server
 | Sustained hammer | 1,000,000 requests, 100k users, 10% bots, 2,000 seats | Exactly 2,000 seats sold, 998,000 clean instant sold-outs, 0 errors, 0 crashes, p50 0.004 ms, p99 1.1 ms |
 | Bot flood | 135,033 requests in 64 s, 50 fixed identities, half bots | 128,575 rate-limited at the edge (95%), exactly 2,000 seats sold, 0 errors, p99 0.28 ms |
 | Chaos | Engine process frozen mid-rush, then resumed | Recovered and finished with perfect accuracy; no data loss |
+| k6 cart flow, fsync per write (v1.6) | 200 users, reserve+confirm per iteration, k6 v0.54 | 229.7 req/s, p95 1.2 s, 0 failures, 0 duplicate seats |
+| k6 cart flow, group commit (v1.7) | Same workload, same box, only group commit changed | 2,276.6 req/s (9.9x), p95 139 ms, 0 failures, 0 duplicate seats |
 
 ## What v1 does not do yet (the honest list)
 
