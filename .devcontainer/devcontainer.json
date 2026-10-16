@@ -1,0 +1,9 @@
+{
+  "name": "Kavach",
+  "image": "mcr.microsoft.com/devcontainers/go:1.22",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {}
+  },
+  "forwardPorts": [8080],
+  "postCreateCommand": "pip install aiohttp && bash scripts/demo.sh"
+}
