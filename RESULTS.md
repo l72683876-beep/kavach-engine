@@ -19,6 +19,11 @@ The invariant we test for: **with N seats, exactly N bookings succeed, no seat i
 | Server latency p50 / p95 / p99 | 0.005 ms / 0.02 ms / 5.6 ms |
 | Accuracy check | PASS — 0 duplicate seats, 4,577 unique booking IDs |
 
+Run A bookings vs seats: 4,577 bookings carried exactly 5,000 seats because 10% of
+users in `sim/simulate.py` request two seats per booking. The split: 4,154 single-seat
+bookings + 423 two-seat bookings. `sim/verify.py` now prints the seats-per-booking
+histogram explicitly, so both numbers reconcile from the same log every time.
+
 ## Run B — Hammer (one million requests)
 
 1,000,000 requests from 100,000 identities (10% bots) at 2,000 seats, run to completion.
