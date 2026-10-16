@@ -1,9 +1,32 @@
 # Kavach
 
-**Kavach** (Hindi for "armor") is an open-source booking engine built to survive a stampede:
-millions of requests at once, no crashes, no hangs, and never a double-booked seat.
-It is the kind of core machinery a system like IRCTC runs on, distilled into one small,
-readable service that any app can put in front of its own logic.
+**Kavach** (Hindi for "armor") is an open-source inventory-reservation and booking engine
+for ANY flash sale: e-commerce drop sales, event and hotel bookings, ticket queues,
+waitlists, or anything limited that lakhs of people want at the same second. Millions of
+requests at once, no crashes, no hangs, and never a double-sold item. It is one small,
+readable Go service that any app can put in front of its own logic.
+
+IRCTC's Tatkal rush (lakhs of people hitting the same train seats at 10:00 AM) is the
+stress test we benchmark against, because it is the hardest version of this problem.
+The engine itself knows nothing about trains.
+
+## What Kavach is, and is not
+
+Kavach is a small, embeddable core: inventory, holds, confirm/release, rate limiting,
+crash recovery, sharding. It is deliberately NOT a full e-commerce platform. Pricing,
+coupons, taxes (GST), user verification and payment flows stay in YOUR application
+layer, where they belong. That is a design choice, not a missing feature: keeping heavy
+business logic out of the hot path is exactly why the core stays fast, and mature
+commerce systems separate these layers the same way.
+
+About RAM: a response is only sent after its event is fsynced to an append-only log
+(persist-before-ack). On restart the logs are replayed and every acknowledged booking,
+hold and waitlist entry is rebuilt; a SIGKILL mid-rush loses nothing that was
+acknowledged. Live data sits in memory for speed; durability lives in the log.
+
+Full benchmark methodology and numbers: [BENCHMARK_K6.md](BENCHMARK_K6.md) and
+[RESULTS.md](RESULTS.md). All k6 scripts ship in the repo, so every claim on this page
+is reproducible on your own machine.
 
 Built to be learned from: every layer exists for a reason, and this README explains why.
 
