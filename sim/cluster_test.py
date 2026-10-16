@@ -31,7 +31,7 @@ def req(node, method, path, body=None):
                 return resp.status, json.loads(resp.read() or b"{}")
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
+        except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError) as e:
             last = e
             time.sleep(0.3)
     raise last
