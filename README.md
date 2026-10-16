@@ -19,6 +19,10 @@ layer, where they belong. That is a design choice, not a missing feature: keepin
 business logic out of the hot path is exactly why the core stays fast, and mature
 commerce systems separate these layers the same way.
 
+A full worked example of this split, a checkout that reserves, prices, taxes,
+verifies and pays, and why the heavy logic does not slow the stampede path:
+[docs/INTEGRATION.md](docs/INTEGRATION.md).
+
 About RAM: a response is only sent after its event is fsynced to an append-only log
 (persist-before-ack). On restart the logs are replayed and every acknowledged booking,
 hold and waitlist entry is rebuilt; a SIGKILL mid-rush loses nothing that was
