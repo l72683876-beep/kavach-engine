@@ -319,11 +319,12 @@ shows two sustained rounds, 1,000,000 and 2,000,000 requests (~18 minutes of con
 pressure, peak 3,077 req/s on a 2-core box, 0 errors, 0 double-sell). Details and honest
 caveats in [demo/README.md](demo/README.md).
 
-## Independent third-party verification (Oct 15, 2026)
+## Reproducible benchmark run (Oct 15, 2026)
 
-A verification run was executed by an external AI agent on a 4-core GitHub Codespace,
-using this repository's engine plus `sim/simulate.py` and `sim/verify.py`, and produced
-its own report from the raw result logs.
+This run used this repository's engine with `sim/simulate.py` and `sim/verify.py` on a
+4-core GitHub Codespace, and the report below was written from the raw result logs.
+The scripts ship in this repo, so nobody has to take these numbers on faith: run the
+commands under "Reproduce" and compare against this table yourself.
 
 | Suite | Users / Seats | Requests | Peak RPS | P50 / P95 / P99 (ms) | Duplicate seats | Server errors |
 |---|---|---|---|---|---|---|
