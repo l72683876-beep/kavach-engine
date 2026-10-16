@@ -107,7 +107,7 @@ Local mode (no keys) stays the two-minute default above. For anything exposed to
 
 Every write must then carry: `Authorization: Bearer <key>`, `X-Kavach-Timestamp`
 (unix seconds, ±5 min), `X-Kavach-Request-Id` (unique per request), and
-`X-Kavach-Signature` = hex(HMAC-SHA256(secret, timestamp + "\n" + request_id + "\n" + raw_body)).
+`X-Kavach-Signature` = hex(HMAC-SHA256(secret, timestamp + "\n" + request_id + "\n" + method + "\n" + request_uri + "\n" + raw_body)): the signature is bound to exactly one request, so a captured one cannot be replayed against another path.
 Replayed requests are rejected; a key reused with a different payload gets
 `idempotency_conflict`; `GET /status?idempotency_key=...` resolves an ambiguous
 timeout. A confirmed response means the booking is already fsynced to disk

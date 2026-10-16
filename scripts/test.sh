@@ -39,7 +39,18 @@ run_suite() {
 
 run_suite "security (14 checks)"    "-api-keys testkey:tenant1 -hmac-secret testsecret" 100 security_test.py
 run_suite "lifecycle (19 checks)"   "-api-keys testkey:tenant1,otherkey:tenant2 -hmac-secret testsecret -hold-ttl 3" 100 lifecycle_test.py
-run_suite "waitlist (13 checks)"    "-api-keys testkey:tenant1 -hmac-secret testsecret -hold-ttl 10 -webhook-url http://127.0.0.1:9099/hook" 10 waitlist_test.py
+run_suite "waitlist (14 checks)"    "-api-keys testkey:tenant1 -hmac-secret testsecret -hold-ttl 10 -webhook-url http://127.0.0.1:9099/hook" 10 waitlist_test.py
+
+run_suite "red-team (39 checks)"    "-api-keys testkey:tenant1,otherkey:tenant2 -hmac-secret testsecret -hold-ttl 5" 50 redteam.py
+
+step "Suite: SDK (python)"
+rm -f engine/sdk*.jsonl
+(cd engine && ./kavach -seats 3 -workers 2 -ip-rate 0 \
+  -api-keys sdkkey:sdktenant -hmac-secret sdksecret -hold-ttl 10 \
+  -log sdk.jsonl -holds-log sdk_holds.jsonl) & E=$!
+sleep 2
+python3 sdk/test_sdks.py && ok "sdk python (11 checks)" || fail "sdk python"
+kill $E 2>/dev/null; wait $E 2>/dev/null
 
 if [ "${1:-}" = "--full" ]; then
   step "Full extras (chaos, recovery, cluster)"

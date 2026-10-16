@@ -39,15 +39,17 @@ class Kavach:
 
     # ---- transport ----
 
-    def _headers(self, body: bytes) -> dict:
+    def _headers(self, body: bytes, method: str = "POST", path: str = "") -> dict:
         h = {"Content-Type": "application/json"}
         if self.api_key:
             h["Authorization"] = "Bearer " + self.api_key
             if self.hmac_secret:
                 ts = str(int(time.time()))
                 rid = uuid.uuid4().hex
+                # the signature covers method + path + body: one signature,
+                # one request, no replay against another endpoint
                 mac = _hmac.new(self.hmac_secret.encode(),
-                                (ts + "\n" + rid + "\n").encode() + body,
+                                (ts + "\n" + rid + "\n" + method + "\n" + path + "\n").encode() + body,
                                 hashlib.sha256)
                 h["X-Kavach-Timestamp"] = ts
                 h["X-Kavach-Request-Id"] = rid
@@ -57,7 +59,7 @@ class Kavach:
     def _request(self, method, path, payload=None):
         body = json.dumps(payload).encode() if payload is not None else b""
         req = urllib.request.Request(self.base_url + path, data=body if payload is not None else None,
-                                     headers=self._headers(body), method=method)
+                                     headers=self._headers(body, method, path), method=method)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read() or b"{}")

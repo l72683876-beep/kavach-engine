@@ -118,6 +118,9 @@ func (inv *Inventory) release(seats []int) {
 func (inv *Inventory) markSold(seats []int) {
 	fromHeld := int64(0)
 	for _, s := range seats {
+		if s-inv.offset < 0 || s-inv.offset >= len(inv.seats) {
+			continue // replaying a log from a bigger inventory: nothing to mark
+		}
 		i := s - inv.offset
 		if atomic.SwapInt32(&inv.seats[i], seatSold) == seatHeld {
 			fromHeld++ // this seat was replayed as a hold first: stop counting it held
@@ -130,6 +133,9 @@ func (inv *Inventory) markSold(seats []int) {
 func (inv *Inventory) markHeld(seats []int) {
 	n := int64(0)
 	for _, s := range seats {
+		if s-inv.offset < 0 || s-inv.offset >= len(inv.seats) {
+			continue // replaying a log from a bigger inventory: nothing to mark
+		}
 		if atomic.CompareAndSwapInt32(&inv.seats[s-inv.offset], seatFree, seatHeld) {
 			n++
 		}
@@ -140,6 +146,9 @@ func (inv *Inventory) markHeld(seats []int) {
 func (inv *Inventory) freeHeld(seats []int) {
 	n := int64(0)
 	for _, s := range seats {
+		if s-inv.offset < 0 || s-inv.offset >= len(inv.seats) {
+			continue // replaying a log from a bigger inventory: nothing to mark
+		}
 		if atomic.CompareAndSwapInt32(&inv.seats[s-inv.offset], seatHeld, seatFree) {
 			n++
 		}
@@ -263,7 +272,11 @@ func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
 	a.nonces[rid] = now + a.window
 	a.mu.Unlock()
 	mac := hmac.New(sha256.New, a.secret)
+	// The MAC covers the timestamp, request id, the METHOD and REQUEST URI,
+	// and the body: a captured signature is bound to exactly one request, so
+	// it cannot be replayed against a different path or query string.
 	mac.Write([]byte(ts + "\n" + rid + "\n"))
+	mac.Write([]byte(r.Method + "\n" + r.URL.RequestURI() + "\n"))
 	mac.Write(body)
 	want, err := hex.DecodeString(sig)
 	if err != nil || !hmac.Equal(mac.Sum(nil), want) {
@@ -747,7 +760,7 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 				*bid = idNum(ev.bookingID)
 			}
 			if ev.key != "" { // the retry-safety guarantee survives restarts too
-				fp := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%d", ev.key, len(ev.seats)))))
+				fp := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", ev.key, ev.user, len(ev.seats)))))
 				idem.mu.Lock()
 				idem.m[ev.tenant+"|"+ev.key] = &idemEntry{
 					Fingerprint: fp, Tenant: ev.tenant, LastSeen: time.Now(),
@@ -1263,7 +1276,7 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	j := &job{key: req.IdemKey, tenant: tenant, user: req.User,
-		fp:    fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%d", req.IdemKey, req.Seats)))),
+		fp:    fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", req.IdemKey, req.User, req.Seats)))),
 		seats: req.Seats, resp: make(chan Result, 1)}
 	t0 := time.Now()
 	select {
@@ -1286,6 +1299,10 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 		}
 		if res.Status == "error" { // a contained worker panic
 			writeJSON(w, http.StatusInternalServerError, res)
+			return
+		}
+		if res.Status == "idempotency_conflict" { // same code /reserve returns
+			writeJSON(w, http.StatusConflict, res)
 			return
 		}
 		writeJSON(w, http.StatusOK, res)
@@ -1324,7 +1341,7 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 
 	// idempotent reserve: the same key returns the same reservation; the same
 	// key with a different payload is a conflict
-	fp := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%d", req.IdemKey, req.Seats))))
+	fp := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", req.IdemKey, req.User, req.Seats))))
 	if prev, found := e.res.byIdem(tenant, req.IdemKey); found {
 		if prev.Fingerprint != fp {
 			atomic.AddInt64(&e.conflicts, 1)

@@ -31,7 +31,7 @@ def request(method, path, body=None):
     rid = uuid.uuid4().hex
     headers = {"Content-Type": "application/json", "Authorization": "Bearer " + API_KEY,
                "X-Kavach-Timestamp": ts, "X-Kavach-Request-Id": rid}
-    mac = hmac.new(SECRET.encode(), (ts + "\n" + rid + "\n").encode() + body_bytes, hashlib.sha256)
+    mac = hmac.new(SECRET.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n").encode() + body_bytes, hashlib.sha256)
     headers["X-Kavach-Signature"] = mac.hexdigest()
     conn.request(method, path, body=body_bytes if body is not None else None, headers=headers)
     r = conn.getresponse(); raw = r.read(); conn.close()

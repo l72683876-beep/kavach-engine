@@ -31,7 +31,7 @@ export class Kavach {
     this.timeoutMs = timeoutMs;
   }
 
-  headers(body) {
+  headers(body, method = "POST", path = "") {
     const h = { "Content-Type": "application/json" };
     if (this.apiKey) {
       h["Authorization"] = "Bearer " + this.apiKey;
@@ -39,7 +39,7 @@ export class Kavach {
         const ts = String(Math.floor(Date.now() / 1000));
         const rid = randomUUID().replace(/-/g, "");
         const mac = createHmac("sha256", this.hmacSecret)
-          .update(`${ts}\n${rid}\n`)
+          .update(`${ts}\n${rid}\n${method}\n${path}\n`)
           .update(body)
           .digest("hex");
         h["X-Kavach-Timestamp"] = ts;
@@ -54,7 +54,7 @@ export class Kavach {
     const body = payload === undefined ? null : JSON.stringify(payload);
     const res = await fetch(this.baseUrl + path, {
       method,
-      headers: this.headers(body || new TextEncoder().encode("")),
+      headers: this.headers(body || new TextEncoder().encode(""), method, path),
       body,
       signal: AbortSignal.timeout(this.timeoutMs),
     });
