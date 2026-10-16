@@ -3,7 +3,7 @@
 seat-range sharding: every node owns a disjoint slice, requests forward
 around the ring when a slice runs out, and the never-double-sell invariant
 must hold across ALL nodes."""
-import json, os, signal, subprocess, sys, time, urllib.request, urllib.error
+import json, os, signal, socket, subprocess, sys, time, urllib.request, urllib.error
 
 # a previous crashed run leaves engines holding its ports: clear the slate first
 subprocess.run(["pkill", "-x", "kavach"], capture_output=True)
@@ -31,7 +31,7 @@ def req(node, method, path, body=None):
                 return resp.status, json.loads(resp.read() or b"{}")
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
-        except urllib.error.URLError as e:
+        except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
             last = e
             time.sleep(0.3)
     raise last
