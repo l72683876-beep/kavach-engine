@@ -1,5 +1,7 @@
 # Kavach
 
+[![CI](https://github.com/l72683876-beep/kavach-engine/actions/workflows/test.yml/badge.svg)](https://github.com/l72683876-beep/kavach-engine/actions/workflows/test.yml)
+
 **Kavach** (Hindi for "armor") is an open-source inventory-reservation and booking engine
 for ANY flash sale: e-commerce drop sales, event and hotel bookings, ticket queues,
 waitlists, or anything limited that lakhs of people want at the same second. Millions of
@@ -33,6 +35,15 @@ Full benchmark methodology and numbers: [BENCHMARK_K6.md](BENCHMARK_K6.md) and
 is reproducible on your own machine.
 
 Built to be learned from: every layer exists for a reason, and this README explains why.
+
+**Run it in one click:** press Code, then Codespaces, then Create codespace on this
+repo, and a 100-seat demo runs itself: build, live bookings, an idempotency proof,
+a 2,000-user mini stampede, and an independent log verification.
+
+**Test it in one command:** `make test` (or `bash scripts/test.sh`) builds, vets,
+runs the race detector, fires a live burst and verifies its log independently, then
+runs every acceptance suite, and ends with one PASS/FAIL report. `--full` adds the
+chaos, recovery and cluster suites. CI runs the same script on every push.
 
 ## Why this exists
 
