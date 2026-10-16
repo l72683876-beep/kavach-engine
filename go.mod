@@ -1,4 +1,4 @@
-module kavach/engine
+module github.com/l72683876-beep/kavach-engine
 
 go 1.22
 
