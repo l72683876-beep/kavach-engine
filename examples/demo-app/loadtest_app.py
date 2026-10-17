@@ -9,7 +9,7 @@ Each buyer refreshes the seat board (60%), holds seats, then either pays
 promotion layers get exercised too. Wave size defaults to concurrency*8.
 The engine's final /seats readout is the double-sell oracle.
 """
-import asyncio, json, sys, time
+import asyncio, json, os, sys, time
 import aiohttp
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9000
