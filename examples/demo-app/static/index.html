@@ -173,7 +173,7 @@ var uid="web-"+Math.random().toString(36).slice(2,10);
 var qty=1, toastT=null;
 
 /* ================= WebGL 3D arena ================= */
-var renderer=null, scene3=null, cam=null, controls=null, seats=null, seatCount=0, colorDirty=false;
+var renderer=null, scene3=null, cam=null, controls=null, seats=null, backM=null, legM=null, baseM=[], seatStates=null, popT=null, dA=null, tmpM=null, seatCount=0, colorDirty=false;
 function initGL(){
   if(!window.THREE) throw new Error("no three");
   var wrap=$("glWrap");
@@ -209,26 +209,33 @@ function initGL(){
   var glowTex=makeGlow("#7c5cff");
   var glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,transparent:true,opacity:.7,depthWrite:false}));
   glow.scale.set(34,20,1); glow.position.set(0,3.2,-12.5); scene3.add(glow);
-  /* seats: instanced */
+  /* seats: real chairs (seat + tilted backrest + legs), instanced */
   var ROWS=26, COLS=64; seatCount=ROWS*COLS;
-  var geo=new THREE.BoxGeometry(.62,.5,.62);
   var mat=new THREE.MeshBasicMaterial({toneMapped:false});
-  seats=new THREE.InstancedMesh(geo,mat,seatCount);
+  seats=new THREE.InstancedMesh(new THREE.BoxGeometry(.6,.13,.52),mat,seatCount);
+  backM=new THREE.InstancedMesh(new THREE.BoxGeometry(.6,.55,.11),new THREE.MeshBasicMaterial({toneMapped:false}),seatCount);
+  legM=new THREE.InstancedMesh(new THREE.BoxGeometry(.48,.3,.42),new THREE.MeshBasicMaterial({toneMapped:false}),seatCount);
   var d=new THREE.Object3D();
-  var idx=0;
+  var lp=new THREE.Matrix4().makeTranslation(0,.22,0);
+  var lb=new THREE.Matrix4().makeRotationX(-0.16); lb.setPosition(0,.6,-.22);
+  var ll=new THREE.Matrix4().makeTranslation(0,.12,0);
+  var idx=0; baseM=[]; seatStates=new Float32Array(seatCount); popT=new Float32Array(seatCount);
+  dA=new THREE.Object3D(); tmpM=new THREE.Matrix4();
   for(var r=0;r<ROWS;r++){
     var R=12+r*1.5, y=0.9+r*0.6, SPREAD=1.15;
     for(var c=0;c<COLS;c++){
       var ang=((c/(COLS-1))-0.5)*2*(Math.PI/2)*SPREAD;
       var x=Math.sin(ang)*R, z=-10-Math.cos(ang)*R;
-      d.position.set(x,y,z);
-      d.lookAt(0,y,-10);
-      d.updateMatrix();
-      seats.setMatrixAt(idx,d.matrix); idx++;
+      d.position.set(x,y,z); d.lookAt(0,y,-10); d.updateMatrix();
+      var b=new THREE.Matrix4().copy(d.matrix); baseM.push(b);
+      seats.setMatrixAt(idx,tmpM.multiplyMatrices(b,lp));
+      backM.setMatrixAt(idx,tmpM.multiplyMatrices(b,lb));
+      legM.setMatrixAt(idx,tmpM.multiplyMatrices(b,ll));
+      idx++;
     }
   }
-  seats.instanceMatrix.needsUpdate=true;
-  scene3.add(seats);
+  seats.instanceMatrix.needsUpdate=backM.instanceMatrix.needsUpdate=legM.instanceMatrix.needsUpdate=true;
+  scene3.add(seats);scene3.add(backM);scene3.add(legM);
   paint3d(0,0);
   /* controls */
   controls=new THREE.OrbitControls(cam,renderer.domElement);
@@ -286,6 +293,22 @@ function initGL(){
     var gs=1+0.08*Math.sin(tsec*2.2);glow.scale.set(34*gs,20*gs,1);
     for(var bi=0;bi<sweeps.length;bi++)sweeps[bi].rotation.y=tsec*0.4*(bi?-1:1)+bi*2;
     sign.material.opacity=0.7+0.15*Math.sin(tsec*3);
+    /* chair animations: sold pop, held bounce */
+    if(seats){
+      var now=performance.now();
+      for(var i=0;i<seatCount;i++){
+        var st=seatStates[i], dt=(now-popT[i])/1000, anim=false, sc=1, up=0;
+        if(st===2){ if(dt<0.7){var k=dt/0.7;sc=1+0.85*Math.sin(k*Math.PI);up=0.65*Math.sin(k*Math.PI);anim=true;} }
+        else if(st===1){up=Math.abs(Math.sin(now/160+i*1.7))*0.10;anim=true;}
+        if(!anim)continue;
+        dA.matrix.copy(baseM[i]);dA.matrix.decompose(dA.position,dA.quaternion,dA.scale);
+        dA.scale.set(sc,sc,sc);dA.position.y+=up;dA.updateMatrix();
+        seats.setMatrixAt(i,tmpM.multiplyMatrices(dA.matrix,lp));
+        backM.setMatrixAt(i,tmpM.multiplyMatrices(dA.matrix,lb));
+        legM.setMatrixAt(i,tmpM.multiplyMatrices(dA.matrix,ll));
+      }
+      seats.instanceMatrix.needsUpdate=true;backM.instanceMatrix.needsUpdate=true;legM.instanceMatrix.needsUpdate=true;
+    }
     controls.update();
     renderer.render(scene3,cam);
   })();
@@ -300,15 +323,16 @@ function makeGlow(color){
 var C_SOLD=new THREE.Color(0x7c5cff), C_HELD=new THREE.Color(0xfbbf24), C_FREE=new THREE.Color(0x3352c8);
 function paint3d(soldFrac,heldFrac){
   if(!seats)return;
-  var c=new THREE.Color();
+  var c=new THREE.Color(), now=performance.now();
   for(var i=0;i<seatCount;i++){
     var h=((i*2654435761)>>>0)%10000/10000;
-    if(h<soldFrac)c.copy(C_SOLD);
-    else if(h<soldFrac+heldFrac)c.copy(C_HELD);
-    else c.copy(C_FREE);
-    seats.setColorAt(i,c);
+    var st=h<soldFrac?2:(h<soldFrac+heldFrac?1:0);
+    if(st===2&&seatStates[i]!==2)popT[i]=now;
+    seatStates[i]=st;
+    if(st===2)c.copy(C_SOLD);else if(st===1)c.copy(C_HELD);else c.copy(C_FREE);
+    seats.setColorAt(i,c);backM.setColorAt(i,c);legM.setColorAt(i,c);
   }
-  if(seats.instanceColor)seats.instanceColor.needsUpdate=true;
+  if(seats.instanceColor){seats.instanceColor.needsUpdate=true;backM.instanceColor.needsUpdate=true;legM.instanceColor.needsUpdate=true;}
 }
 try{ initGL(); }
 catch(e){ document.body.className="fallback-on"; cssFallback(); }
