@@ -131,12 +131,16 @@ def unauth_hammer():
     return check("rate", "80 unauth hammer: all rejected, inventory untouched", all(s == 401 for s in outs) and seats(ER).get("sold") == before.get("sold"))
 unauth_hammer()
 def retry_after():
-    st, j, hdrs = None, None, None
-    c = http.client.HTTPConnection("127.0.0.1", ER, timeout=20)
-    body = json.dumps({"user_id": "rt-burst", "idempotency_key": "kh%s" % uuid.uuid4().hex[:6], "seats": 1}).encode()
-    c.request("POST", "/book", body=body, headers=sign(KEY, "POST", "/book", body))
-    r = c.getresponse(); r.read(); hdrs = r.getheaders(); c.close()
-    return check("rate", "429 carries Retry-After", any(k.lower() == "retry-after" for k, _ in hdrs) or st == 200)
+    got429, hdrs = False, []
+    for i in range(40):  # burst /reserve as one user until the limiter trips (works even after sellout)
+        body = json.dumps({"user_id": "rt-burst", "idempotency_key": "kh%s" % uuid.uuid4().hex[:8], "seats": 1}).encode()
+        c = http.client.HTTPConnection("127.0.0.1", ER, timeout=10)
+        c.request("POST", "/reserve", body=body, headers=sign(KEY, "POST", "/reserve", body))
+        r = c.getresponse(); r.read(); hdrs = r.getheaders(); st = r.status; c.close()
+        if st == 429:
+            got429 = True; break
+    ok = got429 and any(k.lower() == "retry-after" for k, _ in hdrs)
+    return check("rate", "429 carries Retry-After", ok, "429_seen=%s" % got429)
 retry_after()
 def unique_users_no_crash():
     def unit(i):
