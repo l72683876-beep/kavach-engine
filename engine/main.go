@@ -210,11 +210,20 @@ func (l *Limiter) Allow(key string) bool {
 
 // ---------- authentication: bearer keys, HMAC signing, replay protection ----------
 
+func newAuthWithTenantSecrets(keySpec, secret, tenantSecretSpec string) *Auth {
+	a := NewAuth(keySpec, secret)
+	if tenantSecretSpec != "" {
+		a.setTenantSecrets(tenantSecretSpec)
+	}
+	return a
+}
+
 type Auth struct {
 	mu      sync.Mutex
 	enabled bool
 	keys    map[string]string // bearer key -> tenant
 	secret  []byte            // when non-empty, HMAC signing is required
+	secrets map[string][]byte // optional per-tenant HMAC secrets (tenant -> secret)
 	window  int64             // timestamp tolerance in seconds
 	nonces  map[string]int64  // request id -> expiry unix
 }
@@ -238,6 +247,24 @@ func NewAuth(keySpec, secret string) *Auth {
 	return a
 }
 
+// setTenantSecrets installs per-tenant HMAC secrets from a "tenant:secret,..."
+// spec. When set, each request is verified against ITS tenant's secret and a
+// tenant without an entry is rejected; a signature computed under one tenant's
+// secret can no longer be replayed under another tenant's key. The shared
+// -hmac-secret remains the fallback only when no per-tenant secrets are set.
+func (a *Auth) setTenantSecrets(spec string) {
+	a.secrets = map[string][]byte{}
+	for _, kv := range strings.Split(spec, ",") {
+		parts := strings.SplitN(kv, ":", 2)
+		if len(parts) == 2 && parts[0] != "" {
+			a.secrets[parts[0]] = []byte(parts[1])
+		}
+	}
+	if len(a.secrets) == 0 {
+		a.secrets = nil
+	}
+}
+
 // verify authenticates the request. body is the raw request body (may be nil
 // for GET). Returns the tenant, or a non-zero HTTP status on rejection.
 func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
@@ -250,7 +277,16 @@ func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
 	if !ok {
 		return "", http.StatusUnauthorized, "unauthorized"
 	}
-	if a.secret == nil { // bearer-only mode: keys are the whole story
+	var secret []byte
+	if len(a.secrets) > 0 {
+		secret = a.secrets[tenant]
+		if secret == nil {
+			return "", http.StatusUnauthorized, "unauthorized"
+		}
+	} else if a.secret != nil {
+		secret = a.secret
+	}
+	if secret == nil { // bearer-only mode: keys are the whole story
 		return tenant, 0, ""
 	}
 	ts := r.Header.Get("X-Kavach-Timestamp")
@@ -271,7 +307,7 @@ func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
 	}
 	a.nonces[rid] = now + a.window
 	a.mu.Unlock()
-	mac := hmac.New(sha256.New, a.secret)
+	mac := hmac.New(sha256.New, secret)
 	// The MAC covers the timestamp, request id, the METHOD and REQUEST URI,
 	// and the body: a captured signature is bound to exactly one request, so
 	// it cannot be replayed against a different path or query string.
@@ -1686,6 +1722,7 @@ func main() {
 	chaosPanic := flag.Float64("chaos-panic", 0, "chaos: probability a worker panics (contained; the engine survives)")
 	apiKeys := flag.String("api-keys", "", "API keys as key:tenant,key:tenant (empty = local mode, auth off)")
 	secret := flag.String("hmac-secret", "", "HMAC secret; when set, requests must be signed (X-Kavach-Timestamp, X-Kavach-Request-Id, X-Kavach-Signature over timestamp\\nrequest-id\\nbody)")
+	tenantSecrets := flag.String("hmac-secrets", "", "per-tenant HMAC secrets as tenant:secret,...; verifies each request against ITS tenant's secret (overrides -hmac-secret; tenants without an entry are rejected)")
 	userRate := flag.Float64("user-rate", 2, "per-user requests/second (0 disables)")
 	userBurst := flag.Float64("user-burst", 5, "per-user burst")
 	ipRate := flag.Float64("ip-rate", 20, "per-IP requests/second (0 disables)")
@@ -1726,7 +1763,7 @@ func main() {
 		inv:      NewInventory(*seats, offset),
 		userLim:  NewLimiter(*userRate, *userBurst),
 		ipLim:    NewLimiter(*ipRate, *ipBurst),
-		auth:     NewAuth(*apiKeys, *secret),
+		auth:     newAuthWithTenantSecrets(*apiKeys, *secret, *tenantSecrets),
 		idem:     NewIdemStore(),
 		res:      NewReservationStore(),
 		queue:    make(chan *job, 100000),

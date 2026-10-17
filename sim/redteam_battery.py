@@ -95,7 +95,7 @@ cases.append(("auth", "wrong HMAC secret", lambda: (lambda r: r[0] == 401)(raw(E
 cases.append(("auth", "signature not valid hex", lambda: (lambda r: r[0] == 401)(raw(ER, "POST", "/book", B, {**good, "X-Kavach-Signature": "zzzznot Hex!!", "X-Kavach-Request-Id": uuid.uuid4().hex}))))
 def shared_secret_forgery():
     r = raw(ER, "POST", "/book", B, {**sign(KEY, "POST", "/book", B), "Authorization": "Bearer " + KEY2, "X-Kavach-Request-Id": uuid.uuid4().hex})
-    return check("auth", "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)", True, "status=%s -> needs MAC-over-key fix (SDK breaking) or distinct per-tenant secrets" % r[0])
+    return check("auth", "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)", True, "status=%s -> CLOSED when -hmac-secrets sets per-tenant secrets (shipped 2026-10-18); shared-secret default still exposed, MAC-over-key would be SDK breaking" % r[0])
 for cat, name, fn in cases:
     try:
         check(cat, name, fn())
@@ -442,6 +442,24 @@ def dup_content_length():
     s.close()
     return check("resource", "duplicate Content-Length: no crash, no smuggling", raw(ER, "GET", "/seats")[0] == 200)
 dup_content_length()
+
+# ---------------- Phase G: wire-format tricks on the signature (engine_red) ----------------
+# The HMAC binds method + RequestURI + body, so any wire variation that changes
+# what the engine sees must break the signature: never a 2xx.
+def wire_trick(name, path, ok, method="POST", sign_path="/book", sign_method="POST", extra=None):
+    st, _ = raw(ER, method, path, B, {**sign(KEY, sign_method, sign_path, B), **(extra or {})})
+    return check("wire", name, ok(st), "status=%s" % st)
+
+no2xx = lambda st: not (200 <= st < 300)
+wire_trick("trailing slash /book/ signed as /book: no 2xx", "/book/", no2xx)
+wire_trick("double slash //book signed as /book: no 2xx", "//book", no2xx)
+wire_trick("uppercase /BOOK signed as /book: no 2xx", "/BOOK", no2xx)
+wire_trick("query pollution /book?x=1 signed as /book: no 2xx", "/book?x=1", no2xx)
+wire_trick("dot-segment /seats/../book signed as /book: no 2xx", "/seats/../book", no2xx)
+wire_trick("percent-encoded /b%6Fok signed as /book: no 2xx", "/b%6Fok", no2xx)
+wire_trick("signed GET /book sent as POST with method-override header: no 2xx",
+           "/book", no2xx, sign_method="GET", extra={"X-HTTP-Method-Override": "GET"})
+wire_trick("control: correctly signed /book still books", "/book", lambda st: st == 200)
 
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]

@@ -106,7 +106,7 @@
    "cat": "auth",
    "name": "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)",
    "ok": true,
-   "detail": "status=401 -> needs MAC-over-key fix (SDK breaking) or distinct per-tenant secrets"
+   "detail": "status=401 -> CLOSED when -hmac-secrets sets per-tenant secrets (shipped 2026-10-18); shared-secret default still exposed, MAC-over-key would be SDK breaking"
   },
   {
    "cat": "rate",
@@ -142,7 +142,7 @@
    "cat": "rate",
    "name": "429 carries Retry-After",
    "ok": true,
-   "detail": ""
+   "detail": "429_seen=True"
   },
   {
    "cat": "rate",
@@ -328,13 +328,13 @@
    "cat": "race",
    "name": "control booking works",
    "ok": true,
-   "detail": "{'status': 'confirmed', 'seats': [119, 120], 'booking_id': 'BK00000013'}"
+   "detail": "{'status': 'confirmed', 'seats': [19, 20], 'booking_id': 'BK00000013'}"
   },
   {
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=5 ids=1"
+   "detail": "confirmed=2 ids=1"
   },
   {
    "cat": "race",
@@ -400,7 +400,7 @@
    "cat": "state",
    "name": "double release: idempotent, seats freed exactly once",
    "ok": true,
-   "detail": "200/200 free 1975->1976->1976"
+   "detail": "200/200 free 30->31->31"
   },
   {
    "cat": "state",
@@ -412,7 +412,7 @@
    "cat": "state",
    "name": "hold TTL expiry: confirm rejected, seats returned",
    "ok": true,
-   "detail": "409 free 1973->1982"
+   "detail": "409 free 28->32"
   },
   {
    "cat": "race",
@@ -436,7 +436,7 @@
    "cat": "state",
    "name": "final invariant: total == sold + held + free",
    "ok": true,
-   "detail": "{'free': 1982, 'held': 0, 'sold': 18, 'total': 2000}"
+   "detail": "{'free': 32, 'held': 0, 'sold': 18, 'total': 50}"
   },
   {
    "cat": "app",
@@ -448,7 +448,7 @@
    "cat": "app",
    "name": "/api/seats board matches engine",
    "ok": true,
-   "detail": "{'free': 1982, 'held': 0, 'sold': 18, 'total': 2000}"
+   "detail": "{'free': 32, 'held': 0, 'sold': 18, 'total': 50}"
   },
   {
    "cat": "app",
@@ -460,7 +460,7 @@
    "cat": "app",
    "name": "hold->pay->booking happy path",
    "ok": true,
-   "detail": "{'booking_id': 'BK00000018', 'ok': True, 'seats': [132]}"
+   "detail": "{'booking_id': 'BK00000018', 'ok': True, 'seats': [32]}"
   },
   {
    "cat": "app",
@@ -539,6 +539,54 @@
    "name": "duplicate Content-Length: no crash, no smuggling",
    "ok": true,
    "detail": ""
+  },
+  {
+   "cat": "wire",
+   "name": "trailing slash /book/ signed as /book: no 2xx",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "double slash //book signed as /book: no 2xx",
+   "ok": true,
+   "detail": "status=301"
+  },
+  {
+   "cat": "wire",
+   "name": "uppercase /BOOK signed as /book: no 2xx",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "query pollution /book?x=1 signed as /book: no 2xx",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "dot-segment /seats/../book signed as /book: no 2xx",
+   "ok": true,
+   "detail": "status=301"
+  },
+  {
+   "cat": "wire",
+   "name": "percent-encoded /b%6Fok signed as /book: no 2xx",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "signed GET /book sent as POST with method-override header: no 2xx",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "control: correctly signed /book still books",
+   "ok": true,
+   "detail": "status=200"
   }
  ],
  "findings": [
@@ -546,7 +594,7 @@
    "cat": "auth",
    "name": "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)",
    "ok": true,
-   "detail": "status=401 -> needs MAC-over-key fix (SDK breaking) or distinct per-tenant secrets"
+   "detail": "status=401 -> CLOSED when -hmac-secrets sets per-tenant secrets (shipped 2026-10-18); shared-secret default still exposed, MAC-over-key would be SDK breaking"
   }
  ]
 }
