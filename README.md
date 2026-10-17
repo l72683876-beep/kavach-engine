@@ -325,6 +325,24 @@ python sim/simulate.py --total 1000000 --concurrency 3000 --users 100000 --bots 
 python sim/verify.py engine/bookings.jsonl 5000
 ```
 
+## Run it as a real app (three-tier demo)
+
+Standalone benchmarks are one thing; the same rush through a real web
+application is another. [examples/demo-app](examples/demo-app) is a
+complete concert-ticketing site (static UI + Flask backend + the Python
+SDK) that holds seats while a simulated payment runs, confirms on
+success, releases on failure, and waitlists the latecomers. Its load
+test drives 2,000 buyers through the app and fails hard unless the
+engine's final sold count matches the app's confirmed seats exactly.
+
+```bash
+cd examples/demo-app && python3 loadtest_app.py 9000 2000 100
+```
+
+Measured on a 2-core box: 200/200 seats sold through the app, zero
+double-sells, p95 667 ms end to end. Full numbers in
+[examples/demo-app/README.md](examples/demo-app/README.md).
+
 ## Watch it run (video evidence)
 
 Real recordings of live runs, not mockups: [demo/kavach_demo.mp4](demo/kavach_demo.mp4)
