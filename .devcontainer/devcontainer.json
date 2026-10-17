@@ -1,9 +1,13 @@
 {
-  "name": "Kavach",
+  "name": "Kavach demo box",
   "image": "mcr.microsoft.com/devcontainers/go:1.22",
   "features": {
-    "ghcr.io/devcontainers/features/python:1": {}
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.11" }
   },
-  "forwardPorts": [8080],
-  "postCreateCommand": "pip install aiohttp && bash scripts/demo.sh"
+  "postCreateCommand": "make build && pip install flask gunicorn aiohttp",
+  "forwardPorts": [9000],
+  "portsAttributes": { "9000": { "label": "Aurora Nights demo app", "onAutoForward": "openBrowser" } },
+  "customizations": {
+    "vscode": { "extensions": ["golang.go"] }
+  }
 }

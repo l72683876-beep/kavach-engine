@@ -16,11 +16,13 @@ Run it:
     cd examples/demo-app && python3 app.py &   # http://127.0.0.1:9000
     python3 loadtest_app.py                     # end-to-end load test
 """
-import os, sys, uuid
+import json, os, sys, threading, time, uuid
+
+WEBHOOK_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webhooks.jsonl")
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "sdk", "python"))
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 from kavach import Kavach, KavachError
 
 KAVACH_URL = os.environ.get("KAVACH_URL", "http://127.0.0.1:8080")
@@ -34,9 +36,31 @@ kv = Kavach(KAVACH_URL, api_key=KAVACH_KEY, hmac_secret=KAVACH_SECRET)
 def home():
     return send_from_directory("static", "index.html")
 
+_board_cache = {"data": None, "ts": 0.0, "lock": threading.Lock()}
+
+def _refresh_board():
+    """Real flash-sale apps serve the seat board from a short-TTL cache:
+    a 20k-seat show has thousands of spectators refreshing per second, and
+    every one of them hitting the engine would waste it. Kavach still
+    decides every hold, pay and waitlist event live; only the read-only
+    board is eventually consistent (500 ms)."""
+    while True:
+        try:
+            snap = json.dumps(kv.seats())
+            with _board_cache["lock"]:
+                _board_cache["data"] = snap
+                _board_cache["ts"] = time.time()
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+threading.Thread(target=_refresh_board, daemon=True).start()
+
 @app.get("/api/seats")
 def seats():
-    return jsonify(kv.seats())
+    with _board_cache["lock"]:
+        return Response(_board_cache["data"] or '{"total":0,"free":0,"held":0,"sold":0}',
+                        mimetype="application/json")
 
 @app.post("/api/hold")
 def hold():
@@ -80,6 +104,15 @@ def waitlist():
     except KavachError as e:
         return jsonify({"ok": False, "status": e.body.get("status", "error")}), e.status
     return jsonify({"ok": True, "waitlist_id": w.get("waitlist_id"), "position": w.get("position")})
+
+@app.post("/api/kavach-webhook")
+def kavach_webhook():
+    """Engine-to-app callback layer: Kavach POSTs waitlist_fulfilled events
+    here when a released/expired seat promotes a waitlisted fan."""
+    ev = request.get_json(silent=True) or {}
+    with open(WEBHOOK_LOG, "a") as f:
+        f.write(json.dumps(ev) + "\n")
+    return jsonify({"ok": True})
 
 @app.get("/api/metrics")
 def metrics():

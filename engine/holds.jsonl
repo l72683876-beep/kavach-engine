@@ -1,2 +1,0 @@
-{"booking_id":"","event":"reserved","expires_at":1792173338935028670,"reservation_id":"RSV00000001","seats":[3,4],"tenant":"sdktenant","ts":1792173328935033933,"user":"sdkuser"}
-{"booking_id":"BK00000002","event":"confirmed","expires_at":1792173338935028670,"reservation_id":"RSV00000001","seats":[3,4],"tenant":"sdktenant","ts":1792173328946699843,"user":"sdkuser"}

@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
-# One-click Kavach demo: builds the engine, books a seat live, proves
-# idempotency, runs a mini stampede, and independently verifies the log.
-# No arguments. Used by the Codespaces postCreateCommand and `make demo`.
-set -e
+# Boots the full three-tier stack for real: engine -> demo app -> browser UI.
+# Sizes itself to the machine: 2-core laptop or 4-core Codespace, same command.
+set -euo pipefail
 cd "$(dirname "$0")/.."
-echo "== Building Kavach..."
-(cd engine && go build -o kavach .)
-rm -f engine/demo*.jsonl
-(cd engine && ./kavach -seats 100 -workers 4 -ip-rate 0 \
-  -log demo.jsonl -holds-log demo_holds.jsonl) & ENGINE_PID=$!
-trap 'kill $ENGINE_PID 2>/dev/null || true' EXIT
-for i in $(seq 1 40); do curl -sf http://127.0.0.1:8080/seats >/dev/null && break; sleep 0.5; done
+
+CORES="$(nproc 2>/dev/null || echo 2)"
+GWORKERS=$(( 2 * CORES + 1 ))
+EWORKERS=$(( CORES > 2 ? 4 : 2 ))
+echo "cores: $CORES -> gunicorn workers $GWORKERS, engine workers $EWORKERS"
+
+pkill -f "kavach -seats" 2>/dev/null || true
+pkill -f gunicorn 2>/dev/null || true
+sleep 1
+
+cd engine
+./kavach -seats 20000 -workers "$EWORKERS" -ip-rate 0 \
+  -api-keys appkey:aurora-app -hmac-secret appsecret \
+  -webhook-url http://127.0.0.1:9000/api/kavach-webhook &
+cd ..
+
+cd examples/demo-app
+KAVACH_KEY=appkey KAVACH_SECRET=appsecret \
+python3 -m gunicorn -w "$GWORKERS" --threads 4 -b 0.0.0.0:9000 --timeout 120 \
+  app:app &
+APP_PID=$!
+sleep 3
 
 echo
-echo "== Idempotency: booking three times with the SAME idempotency key..."
-for i in 1 2 3; do
-  curl -s -X POST http://127.0.0.1:8080/book -H 'Content-Type: application/json' \
-    -d '{"user_id":"lucky","idempotency_key":"demo-key-1","seats":1}'
-  echo
-done
-
-echo
-echo "== Mini stampede: 2,000 users hit 100 seats at once..."
-python3 sim/simulate.py --users 2000 --seats 100 || true
-
-echo
-echo "== Independent verification from the log alone:"
-python3 sim/verify.py engine/demo.jsonl 100 engine/demo_holds.jsonl
-
-echo
-echo "== Final inventory (total 100, sold 100, free 0 expected):"
-curl -s http://127.0.0.1:8080/seats
-echo
-echo "Demo done. Full acceptance suites: make test"
+echo "=========================================="
+echo " Aurora Nights LIVE:  http://localhost:9000"
+echo " 20,000 seats, hold expiry 300s, engine on :8080"
+echo " stop with:  make demo-stop"
+echo "=========================================="
+wait "$APP_PID"
