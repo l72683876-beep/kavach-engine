@@ -77,3 +77,24 @@ What this shows: a retry storm does not multiply load on the inventory. The limi
 - These runs were bound by the simulator client (~2,100 req/s from one sandbox). The engine's own p99 latency stayed under 6 ms throughout, which is where the headroom lives.
 - Single-node only for now. The documented path to multi-node (a Redis-backed lock/inventory layer) is design-stage, not tested. Do not run a lottery or a real Tatkal sale on the single-node build without your own review.
 - Bots in Run C used fixed identities. Attackers rotating identities defeat naive per-user limits; the honest defense there is an edge layer (CDN/WAF) plus capacity shaping, which is deployment, not this codebase.
+
+## In-process micro-benchmarks (engine/bench_test.go)
+
+How fast is the engine's own decision path with no network in the way?
+Run it yourself: `cd engine && go test -bench . -benchtime 20000x -benchmem -run xxx`
+
+Conditions: AMD EPYC 7B12, 2 cores, go1.22.10, measured while a 2.6M-request
+load test was hammering the same host (so these are conservative, not lab-quiet).
+
+| Step | Measured |
+|---|---|
+| Rate-limiter decision (per-user token bucket, `Allow`) | **85 ns/op, 0 allocs** |
+| Seat-board read (`/seats`, in-process) | **8.9 µs/op** |
+| Booking write path in-process, incl. persist-before-ack fsync | ~2.3 ms/op |
+| fsync alone on the same disk (500 samples) | median 2.31 ms |
+
+Reading: the decision path (HMAC auth, replay check, per-user + per-IP
+limits, idempotency, CAS hold) costs nanoseconds to microseconds. Nearly all
+of the 2.3 ms write-path time is the fsync that makes "confirmed" mean
+*survives a power cut*. Turn durability down and the write path lands in the
+same microsecond band; keep it on and you're buying crash safety for ~2 ms.
