@@ -1,0 +1,62 @@
+{
+  "mode": "burst",
+  "wall_seconds": 1.92,
+  "requests_sent_by_clients": 2000,
+  "throughput_rps": 1040.3,
+  "statuses": {
+    "confirmed": 181,
+    "sold_out": 1819
+  },
+  "confirmed_seats_client_view": 198,
+  "server_view": {
+    "free": 0,
+    "held": 2,
+    "sold": 198,
+    "total": 200
+  },
+  "server_metrics": {
+    "auth_failures": 0,
+    "chaos_panics": 0,
+    "chaos_stalls": 0,
+    "confirmed": 181,
+    "errors": 0,
+    "forwarded": 0,
+    "holds_confirmed": 0,
+    "holds_created": 0,
+    "holds_expired": 0,
+    "holds_released": 0,
+    "idem_conflicts": 0,
+    "in_flight": 0,
+    "ip_rate_limited": 0,
+    "latency_ms": {
+      "p50": 250.826,
+      "p95": 294.772,
+      "p99": 305.141,
+      "samples": 2000
+    },
+    "overloaded": 0,
+    "pg_failed": 0,
+    "pg_shipped": 0,
+    "rate_limited": 0,
+    "received": 2000,
+    "replays_rejected": 0,
+    "sold_out": 1819,
+    "uptime_seconds": 3.4611611079999998,
+    "user_rate_limited": 0,
+    "waitlist_cancelled": 0,
+    "waitlist_fulfilled": 0,
+    "waitlist_queued": 0,
+    "webhook_failed": 0,
+    "webhook_sent": 0
+  },
+  "client_errors": 0,
+  "gave_up": 0,
+  "config": {
+    "users": 2000,
+    "total": 0,
+    "concurrency": 0,
+    "bots": 0.0,
+    "base": "http://127.0.0.1:8085",
+    "out": "/tmp/direct.json"
+  }
+}

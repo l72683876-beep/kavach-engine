@@ -1,0 +1,11 @@
+
+app load test: 2000 buyers, concurrency 100, wall 7.5s
+throughput: 266 buyer flows/s
+end-to-end latency ms (hold+pay through the app): p50 286  p95 667  p99 934  max 1103
+  hold_ok: 185
+  hold_sold_out: 1815
+  pay_confirmed: 185
+seats confirmed by the app: 200
+engine: {'free': 0, 'held': 0, 'sold': 200, 'total': 200}
+engine requests received (through app): 2185  rate limited: 0
+DOUBLE-SELL CHECK: PASS
