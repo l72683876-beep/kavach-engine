@@ -53,15 +53,40 @@ def _refresh_board():
                 _board_cache["ts"] = time.time()
         except Exception:
             pass
+        try:
+            state = json.dumps(kv.seats_state())
+            with _board_cache["lock"]:
+                _board_cache["state"] = state
+        except Exception:
+            pass
         time.sleep(0.5)
 
+_board_cache.setdefault("state", None)
 threading.Thread(target=_refresh_board, daemon=True).start()
 
 @app.get("/api/seats")
 def seats():
     with _board_cache["lock"]:
-        return Response(_board_cache["data"] or '{"total":0,"free":0,"held":0,"sold":0}',
-                        mimetype="application/json")
+        data = _board_cache["data"]
+    if not data:  # fresh worker whose refresh thread has not ticked yet
+        try:
+            data = json.dumps(kv.seats())
+        except Exception:
+            data = '{"total":0,"free":0,"held":0,"sold":0}'
+    return Response(data, mimetype="application/json")
+
+
+@app.get("/api/seats/state")
+def seats_state():
+    """Live per-seat map for the venue view: '0' free, '1' held, '2' sold."""
+    with _board_cache["lock"]:
+        data = _board_cache.get("state")
+    if not data:
+        try:
+            data = json.dumps(kv.seats_state())
+        except Exception:
+            return jsonify({"states": "", "offset": 0}), 503
+    return Response(data, mimetype="application/json")
 
 @app.post("/api/hold")
 def hold():
