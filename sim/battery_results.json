@@ -1,0 +1,552 @@
+{
+ "cases": [
+  {
+   "cat": "auth",
+   "name": "wrong api key",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "empty bearer",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "basic scheme not accepted",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "no auth headers at all",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "missing X-Kavach-Timestamp",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "missing X-Kavach-Request-Id",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "missing X-Kavach-Signature",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp 2h old",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp 2h future",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp not a number",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "signature over GET used on POST",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "signature over /confirm used on /book",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "body tampered after signing (+space)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "single bit flip in body",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "wrong HMAC secret",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "signature not valid hex",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "auth",
+   "name": "exact replay after success -> 401 replay",
+   "ok": true,
+   "detail": "200 then 401 replay"
+  },
+  {
+   "cat": "auth",
+   "name": "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)",
+   "ok": true,
+   "detail": "status=401 -> needs MAC-over-key fix (SDK breaking) or distinct per-tenant secrets"
+  },
+  {
+   "cat": "rate",
+   "name": "same-user burst 12 rapid: limiter fires",
+   "ok": true,
+   "detail": "limited=7"
+  },
+  {
+   "cat": "rate",
+   "name": "same-user burst on /reserve: limiter fires",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "rate",
+   "name": "30 parallel same user: limited, zero 5xx",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "rate",
+   "name": "X-Forwarded-For rotation cannot buy more budget",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "rate",
+   "name": "80 unauth hammer: all rejected, inventory untouched",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "rate",
+   "name": "429 carries Retry-After",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "rate",
+   "name": "100 distinct users hold+release parallel: no 5xx, engine alive, inventory net zero",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 01: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f1\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 02: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f2\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 03: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f3\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 04: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f4\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 05: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f5\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 06: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f6\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 07: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f7\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 08: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f8\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 09: {\"user_id\":\"\",\"idempotency_key\":\"f9\",\"se",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 10: {\"user_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 11: X",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 12: {\"user_id\":\"\\ud83d\\ude00\",\"idempotency_k",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 13: {\"user_id\":\"a\\u0000b\",\"idempotency_key\":",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 14: {\"user_id\":\"line\\nbreak\",\"idempotency_ke",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 15: {\"user_id\":\"../../etc/passwd\",\"idempoten",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 16: {\"user_id\":\"${jndi:ldap://x}\",\"idempoten",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 17: {\"user_id\":\"rt-f\",\"idempotency_key\":\"\",\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 18: {\"user_id\":\"rt-f\",\"idempotency_key\":\"KKK",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 19: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f19",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 20: {\"user_id\":123,\"idempotency_key\":\"f20\",\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 21: {\"user_id\":[\"a\"],\"idempotency_key\":\"f21\"",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 22: {\"user_id\":\"rt-f\",\"idempotency_key\":\"f22",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 23: {bad json",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 24: ",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 25: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 26: [{\"user_id\":\"rt-f\",\"idempotency_key\":\"f2",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "fuzz 27: null",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "input",
+   "name": "10KB request-id header",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "input",
+   "name": "GET on /book rejected",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "race",
+   "name": "control booking works",
+   "ok": true,
+   "detail": "{'status': 'confirmed', 'seats': [119, 120], 'booking_id': 'BK00000013'}"
+  },
+  {
+   "cat": "race",
+   "name": "50 parallel SAME idempotency key: exactly one booking",
+   "ok": true,
+   "detail": "confirmed=5 ids=1"
+  },
+  {
+   "cat": "race",
+   "name": "same idem key, DIFFERENT users: second is cleanly rejected (409), no cross-user booking",
+   "ok": true,
+   "detail": "200 409"
+  },
+  {
+   "cat": "race",
+   "name": "same key same user DIFFERENT seats: replay guard, no second booking",
+   "ok": true,
+   "detail": "(409, {'status': 'idempotency_conflict'})"
+  },
+  {
+   "cat": "race",
+   "name": "60 parallel reserve THE LAST seat: exactly one hold",
+   "ok": true,
+   "detail": "held=1"
+  },
+  {
+   "cat": "race",
+   "name": "40 parallel confirm same reservation: one booking id, one seat sold",
+   "ok": true,
+   "detail": "ids=1 sold=1"
+  },
+  {
+   "cat": "race",
+   "name": "30 parallel release: freed exactly once, invariants hold",
+   "ok": true,
+   "detail": "[200, 200, 200, 200, 200]"
+  },
+  {
+   "cat": "race",
+   "name": "reservation-id brute force + cross-tenant read: all 404",
+   "ok": true,
+   "detail": "{404}"
+  },
+  {
+   "cat": "state",
+   "name": "confirm nonexistent reservation -> 404",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "state",
+   "name": "reserve same key twice: idempotent, same reservation",
+   "ok": true,
+   "detail": "200/200"
+  },
+  {
+   "cat": "state",
+   "name": "double confirm: idempotent, still exactly one booking",
+   "ok": true,
+   "detail": "200 then 200"
+  },
+  {
+   "cat": "state",
+   "name": "confirm after release: rejected",
+   "ok": true,
+   "detail": "200 then 409"
+  },
+  {
+   "cat": "state",
+   "name": "double release: idempotent, seats freed exactly once",
+   "ok": true,
+   "detail": "200/200 free 1975->1976->1976"
+  },
+  {
+   "cat": "state",
+   "name": "tenant2 cannot confirm/release tenant1's hold",
+   "ok": true,
+   "detail": "404/404"
+  },
+  {
+   "cat": "state",
+   "name": "hold TTL expiry: confirm rejected, seats returned",
+   "ok": true,
+   "detail": "409 free 1973->1982"
+  },
+  {
+   "cat": "race",
+   "name": "HEAVY: 100 parallel for the LAST seat: exactly one winner, zero oversell",
+   "ok": true,
+   "detail": "winners=1"
+  },
+  {
+   "cat": "abuse",
+   "name": "200 sold-out flood: zero 5xx, zero phantom bookings",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "abuse",
+   "name": "waitlist: dedup works, bad seats rejected, cancel-404, 100-join no crash",
+   "ok": true,
+   "detail": "dup=True bad=[400, 400, 400] cancel=404"
+  },
+  {
+   "cat": "state",
+   "name": "final invariant: total == sold + held + free",
+   "ok": true,
+   "detail": "{'free': 1982, 'held': 0, 'sold': 18, 'total': 2000}"
+  },
+  {
+   "cat": "app",
+   "name": "app home page serves",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "/api/seats board matches engine",
+   "ok": true,
+   "detail": "{'free': 1982, 'held': 0, 'sold': 18, 'total': 2000}"
+  },
+  {
+   "cat": "app",
+   "name": "garbage /api/hold bodies: no 500s",
+   "ok": true,
+   "detail": "codes=[400, 400, 400, 400, 400, 400]"
+  },
+  {
+   "cat": "app",
+   "name": "hold->pay->booking happy path",
+   "ok": true,
+   "detail": "{'booking_id': 'BK00000018', 'ok': True, 'seats': [132]}"
+  },
+  {
+   "cat": "app",
+   "name": "garbage /api/pay: no 500s, clean errors",
+   "ok": true,
+   "detail": "codes=[404, 404, 400]"
+  },
+  {
+   "cat": "app",
+   "name": "failed payment releases the hold",
+   "ok": true,
+   "detail": "200 {'ok': False, 'status': 'payment_failed'}"
+  },
+  {
+   "cat": "app",
+   "name": "20 parallel double-pay same reservation: one booking",
+   "ok": true,
+   "detail": "200s=20"
+  },
+  {
+   "cat": "app",
+   "name": "pay with WRONG user_id: engine must bind user to reservation",
+   "ok": true,
+   "detail": "403 {'ok': False, 'status': 'forbidden'}"
+  },
+  {
+   "cat": "app",
+   "name": "webhook: forged (no token) rejected 403, tokened event accepted",
+   "ok": true,
+   "detail": "403/200"
+  },
+  {
+   "cat": "app",
+   "name": "garbage webhook payload handling",
+   "ok": true,
+   "detail": "status=403"
+  },
+  {
+   "cat": "app",
+   "name": "unknown endpoint 404; GET on /api/hold 405",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "app",
+   "name": "/api/metrics leaks no secrets",
+   "ok": true,
+   "detail": "leak=False"
+  },
+  {
+   "cat": "app",
+   "name": "30 parallel app holds: no 500s",
+   "ok": true,
+   "detail": "codes={200: 30}"
+  },
+  {
+   "cat": "resource",
+   "name": "1MB body rejected fast",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "resource",
+   "name": "150 parallel mixed load across both stacks: zero 5xx",
+   "ok": true,
+   "detail": "500s=0 dead=0"
+  },
+  {
+   "cat": "resource",
+   "name": "raw garbage bytes on socket: engine survives",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "resource",
+   "name": "duplicate Content-Length: no crash, no smuggling",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "findings": [
+  {
+   "cat": "auth",
+   "name": "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)",
+   "ok": true,
+   "detail": "status=401 -> needs MAC-over-key fix (SDK breaking) or distinct per-tenant secrets"
+  }
+ ]
+}

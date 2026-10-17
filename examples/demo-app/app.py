@@ -28,6 +28,7 @@ from kavach import Kavach, KavachError
 KAVACH_URL = os.environ.get("KAVACH_URL", "http://127.0.0.1:8080")
 KAVACH_KEY = os.environ.get("KAVACH_KEY", "appkey")
 KAVACH_SECRET = os.environ.get("KAVACH_SECRET", "appsecret")
+WEBHOOK_TOKEN = os.environ.get("KAVACH_WEBHOOK_TOKEN", "")
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 kv = Kavach(KAVACH_URL, api_key=KAVACH_KEY, hmac_secret=KAVACH_SECRET)
@@ -66,7 +67,11 @@ def seats():
 def hold():
     """Reserve seats through Kavach; the app keeps its own order record."""
     b = request.get_json(silent=True) or {}
-    user, n = b.get("user_id"), int(b.get("seats", 1))
+    try:
+        n = int(b.get("seats", 1))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "status": "bad_request"}), 400
+    user = b.get("user_id")
     key = b.get("key") or uuid.uuid4().hex
     try:
         r = kv.reserve(user, key, seats=n)
@@ -99,8 +104,11 @@ def pay():
 def waitlist():
     b = request.get_json(silent=True) or {}
     try:
-        w = kv.waitlist_join(b.get("user_id"), b.get("key") or uuid.uuid4().hex,
-                             seats=int(b.get("seats", 1)))
+        try:
+            n = int(b.get("seats", 1))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "status": "bad_request"}), 400
+        w = kv.waitlist_join(b.get("user_id"), b.get("key") or uuid.uuid4().hex, seats=n)
     except KavachError as e:
         return jsonify({"ok": False, "status": e.body.get("status", "error")}), e.status
     return jsonify({"ok": True, "waitlist_id": w.get("waitlist_id"), "position": w.get("position")})
@@ -109,7 +117,11 @@ def waitlist():
 def kavach_webhook():
     """Engine-to-app callback layer: Kavach POSTs waitlist_fulfilled events
     here when a released/expired seat promotes a waitlisted fan."""
-    ev = request.get_json(silent=True) or {}
+    if WEBHOOK_TOKEN and request.args.get("token") != WEBHOOK_TOKEN:
+        return jsonify({"ok": False, "status": "forbidden"}), 403
+    ev = request.get_json(silent=True)
+    if not isinstance(ev, dict):
+        return jsonify({"ok": False, "status": "bad_json"}), 400
     with open(WEBHOOK_LOG, "a") as f:
         f.write(json.dumps(ev) + "\n")
     return jsonify({"ok": True})
