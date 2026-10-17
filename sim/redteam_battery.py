@@ -154,6 +154,7 @@ unique_users_no_crash()
 
 # ---------------- Phase C: input validation / injection fuzz (engine_red) ----------------
 base_free = seats(ER).get("free")
+base_sold = seats(ER).get("sold")
 fuzz_bodies = [
     '{"user_id":"rt-f","idempotency_key":"f1","seats":-1}', '{"user_id":"rt-f","idempotency_key":"f2","seats":0}',
     '{"user_id":"rt-f","idempotency_key":"f3","seats":5}', '{"user_id":"rt-f","idempotency_key":"f4","seats":1000000}',
@@ -175,9 +176,9 @@ for i, fb in enumerate(fuzz_bodies):
     h = sign(KEY, "POST", "/book", fb.encode() if isinstance(fb, str) else fb)
     h["X-Kavach-Request-Id"] = uuid.uuid4().hex
     st, j = raw(ER, "POST", "/book", fb, h)
-    if rej(st) and seats(ER).get("free") == base_free:
+    if rej(st) and seats(ER).get("sold") == base_sold:
         fuzz_ok += 1
-    check("input", "fuzz %02d: %s" % (i + 1, fb[:40]), rej(st) and seats(ER).get("free") == base_free, "status=%s" % st)
+    check("input", "fuzz %02d: %s" % (i + 1, fb[:40]), rej(st) and seats(ER).get("sold") == base_sold, "status=%s" % st)
 def big_rid():
     h = sign(KEY, "POST", "/book", B); h["X-Kavach-Request-Id"] = "R" * 10240
     return check("input", "10KB request-id header", rej(raw(ER, "POST", "/book", B, h)[0]))
