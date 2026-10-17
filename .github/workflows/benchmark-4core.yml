@@ -1,0 +1,84 @@
+# Kavach 4-core benchmark: engine + demo app + flash-sale load, on a 4-core runner.
+# Run it yourself: Actions -> "4-core benchmark" -> Run workflow (no local setup needed).
+name: 4-core benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      buyers:
+        description: "Simulated buyers"
+        default: "1300000"
+      conc:
+        description: "Concurrency"
+        default: "500"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/benchmark-4core.yml"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest   # 4 vCPU, 16 GB RAM
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Machine
+        run: nproc && free -h
+      - name: Build engine
+        run: make build
+      - name: Install app deps
+        run: pip install flask gunicorn aiohttp
+      - name: Boot engine (20k seats)
+        working-directory: engine
+        run: |
+          ./kavach -seats 20000 -workers 4 -ip-rate 0 \
+            -api-keys appkey:aurora-app -hmac-secret appsecret \
+            -log bench_bookings.jsonl -holds-log bench_holds.jsonl \
+            -webhook-url http://127.0.0.1:9000/api/kavach-webhook \
+            > engine.log 2>&1 &
+          echo $! > engine.pid
+          sleep 2
+          curl -s http://127.0.0.1:8080/seats
+      - name: Boot demo app (gunicorn, sized to 4 cores)
+        run: |
+          cd examples/demo-app
+          KAVACH_KEY=appkey KAVACH_SECRET=appsecret \
+          python3 -m gunicorn -w 9 --threads 4 -b 127.0.0.1:9000 \
+            --timeout 120 --keep-alive 5 app:app > app.log 2>&1 &
+          echo $! > app.pid
+          sleep 3
+          curl -s http://127.0.0.1:9000/api/seats
+      - name: Flash-sale load test
+        working-directory: examples/demo-app
+        env:
+          REQ_BUDGET: "2600000"
+        run: |
+          python3 loadtest_app.py 9000 1300000 500 4000 2>&1 | tee big.log
+      - name: Correctness oracle (double-sell check)
+        working-directory: examples/demo-app
+        run: python3 verify.py 2>&1 | tee verify.log
+      - name: Engine final state
+        run: |
+          curl -s http://127.0.0.1:8080/seats | tee seats-final.json
+          curl -s http://127.0.0.1:8080/metrics | tee metrics-final.json
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: kavach-4core-benchmark
+          path: |
+            examples/demo-app/big.log
+            examples/demo-app/verify.log
+            engine/seats-final.json
+            engine/metrics-final.json
+            engine/bench_bookings.jsonl
+            engine/engine.log
+          retention-days: 30
+      - name: Stop stack
+        run: |
+          kill $(cat engine/engine.pid) 2>/dev/null || true
+          pkill -f gunicorn || true
