@@ -63,7 +63,7 @@ or the app hangs and users wait forever. Kavach is designed against those three 
 | Layer | What it does | Why |
 |---|---|---|
 | Edge | Validates, requires an idempotency key | Retries can never create two bookings |
-| Rate limiter | Token bucket per user/key | Bots die here in microseconds, for free |
+| Rate limiter | Token bucket per user/key | Bots die here: an in-memory token-bucket check rejects abuse in nanoseconds of CPU, before inventory is touched |
 | Admission queue | Bounded, sheds when full | Backpressure instead of memory death |
 | Worker pool | Fixed worker count pulls from the queue | Capacity is a setting, not a guess |
 | Inventory cache | Seat map lives in memory, atomically updated | Reads never wait on the database |
