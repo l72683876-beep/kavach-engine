@@ -11,6 +11,7 @@ import hashlib, hmac, http.client, json, sys, time, uuid
 from concurrent.futures import ThreadPoolExecutor
 
 ER, AR, EL, ER2 = 8091, 9001, 8080, 8092
+ET = 8095  # dedicated short-TTL engine, no other traffic
 KEY, KEY2, SECRET = "testkey", "otherkey", "testsecret"
 results = []
 
@@ -222,6 +223,11 @@ def hold_race():
         post(ER2, "/book", {"user_id": "rt-hp%d" % i, "idempotency_key": "khp%d" % i, "seats": 1}); i += 1
     outs = P(60, lambda i: post(ER2, "/reserve", {"user_id": "rt-h%d" % i, "idempotency_key": "rh%d" % i, "seats": 1}))
     held = [o for o in outs if o[0] == 200 and o[1].get("status") == "held"]
+    # release the winning hold so the choreography does not depend on TTL expiry timing
+    for o in held:
+        rid = o[1].get("reservation_id")
+        if rid:
+            post(ER2, "/release", {"reservation_id": rid})
     return check("race", "60 parallel reserve THE LAST seat: exactly one hold", len(held) == 1, "held=%d" % len(held))
 hold_race()
 def confirm_race():
@@ -288,13 +294,18 @@ def cross_tenant_ops():
     return check("state", "tenant2 cannot confirm/release tenant1's hold", c[0] == 404 and rl[0] == 404, "%s/%s" % (c[0], rl[0]))
 cross_tenant_ops()
 def ttl_expiry():
-    st, j = post(ER, "/reserve", {"user_id": "rt-ttl", "idempotency_key": "rttl", "seats": 2})
+    st, j = post(ET, "/reserve", {"user_id": "rt-ttl", "idempotency_key": "rttl", "seats": 2})
     rid = j.get("reservation_id")
-    free_before = seats(ER).get("free")
-    time.sleep(23)
-    c = post(ER, "/confirm", {"reservation_id": rid, "user_id": "rt-ttl"})
-    free_after = seats(ER).get("free")
-    return check("state", "hold TTL expiry: confirm rejected, seats returned", c[0] in (404, 409) and free_after > free_before, "%s free %d->%d" % (c[0], free_before, free_after))
+    res_detail = "res=%s %s" % (st, str(j)[:100])
+    free_before = seats(ET).get("free")
+    time.sleep(5)
+    c = post(ET, "/confirm", {"reservation_id": rid, "user_id": "rt-ttl"})
+    # expiry reaping is lazy: wait for the seats to actually return
+    deadline = time.time() + 40
+    while time.time() < deadline and seats(ET).get("free") < free_before + 2:
+        time.sleep(1)
+    free_after = seats(ET).get("free")
+    return check("state", "hold TTL expiry: confirm rejected, seats returned", c[0] in (404, 409) and free_after == free_before + 2, "%s free %d->%d" % (c[0], free_before, free_after))
 ttl_expiry()
 
 time.sleep(5)
@@ -311,7 +322,7 @@ def last_seat_race():
     ok = [o for o in outs if o[0] == 200 and o[1].get("status") == "confirmed"]
     s = seats(ER2)
     return check("race", "HEAVY: 100 parallel for the LAST seat: exactly one winner, zero oversell",
-                 len(ok) == 1 and s.get("free") == 0 and s.get("total") == s.get("sold") + s.get("held") + s.get("free"), "winners=%d" % len(ok))
+                 len(ok) == 1 and s.get("free") == 0 and s.get("total") == s.get("sold") + s.get("held") + s.get("free"), "winners=%d statuses=%s seats=%s" % (len(ok), dict(__import__("collections").Counter(o[0] for o in outs)), seats(ER2)))
 last_seat_race()
 def sold_out_flood():
     outs = P(200, lambda i: post(ER2, "/book", {"user_id": "rt-so%d" % i, "idempotency_key": "ks%d" % i, "seats": 1})[0])
