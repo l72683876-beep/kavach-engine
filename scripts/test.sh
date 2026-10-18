@@ -57,6 +57,7 @@ if [ "${1:-}" = "--full" ]; then
   # the sim scripts Popen with cwd="engine" themselves, so run them from the repo root
   python3 sim/chaos_test.py 8091    && ok "chaos"    || fail "chaos"
   python3 sim/recovery_test.py 8090 && ok "recovery" || fail "recovery"
+  python3 sim/snapshot_test.py 8096 && ok "snapshot + compaction" || fail "snapshot + compaction"
   python3 sim/cluster_test.py 8101  && ok "cluster"  || fail "cluster"
 fi
 

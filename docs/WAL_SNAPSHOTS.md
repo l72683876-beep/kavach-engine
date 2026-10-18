@@ -11,8 +11,10 @@ is linear in log size: a restart after a crash replays every line ever written, 
 99% of them describe holds that expired hours ago and bookings superseded long ago. At
 flash-sale scale the log grows fastest exactly when recovery matters most.
 
-This document is the design for fixing that with periodic snapshots plus log compaction,
-without giving up persist-before-ack.
+This document specifies periodic snapshots plus log compaction, without giving up
+persist-before-ack. **Status: SHIPPED** (2026-10-18), off by default; enable with
+`-snapshot-every N` and/or `-snapshot-interval T`. Implementation lives in
+`engine/snapshot.go`, chaos coverage in `sim/snapshot_test.py`.
 
 ## Design in one line
 
@@ -35,20 +37,21 @@ A snapshot must capture everything replayLogs reconstructs:
   re-execute (the original request was from before the last snapshot).
 - **Counters**: booking-id and reservation-id sequences, waitlist sequence.
 
-Format: one file, `snapshot-<seq>.bin`, little-endian, with a fixed magic + version header,
-then length-prefixed sections. A SHA-256 of the section contents goes in the trailer; a
-snapshot that does not match its checksum is never loaded, and the loader falls back to
+Format: one file, `snapshot-<seq>.bin`, little-endian: a 4-byte magic ("KVS1"), a version
+word, an 8-byte payload length, the payload itself (JSON: seat map, reservations with
+their idempotency alias index, waitlist with sequence, recent idempotency entries), and a
+SHA-256 of the payload in the trailer. A snapshot that does not match its checksum is
+never loaded, and the loader falls back to
 full log replay (correct, just slower).
 
 ## Trigger policy
 
 Three triggers, whichever comes first:
 
-1. **Volume**: every 10,000 committed events (configurable `-snapshot-every`).
-2. **Time**: at most one snapshot per 5 minutes while under load (configurable
-   `-snapshot-interval`), so recovery stays bounded even if a huge burst is split
-   into many small writes.
-3. **Idle**: on graceful shutdown, always snapshot.
+1. **Volume**: every N committed events (`-snapshot-every`, 0 = off).
+2. **Time**: after T seconds with new events (`-snapshot-interval`, 0 = off), so recovery
+   stays bounded even if a huge burst is split into many small writes.
+3. Graceful-shutdown snapshotting is future work; a crash simply replays the short tail.
 
 Snapshots run on a dedicated goroutine against a copy-on-write view: the engine already
 serializes writes through its commit path, so the snapshotter takes the same lock once,
@@ -57,13 +60,17 @@ disk write it did not itself trigger.
 
 ## Crash safety, in the exact order that matters
 
-1. Write `snapshot-<seq>.bin.tmp`, fsync the file.
-2. Write `snapshot-<seq>.bin` (rename is atomic on POSIX), fsync the directory.
-3. Write `snapshot-<seq>.offset` containing the byte offset in the CURRENT WAL segment
-   the snapshot was taken at, fsync.
-4. Rotate the WAL: subsequent writes append to `bookings-<seq+1>.log`.
-5. Delete segments with a lower sequence than the snapshot's, only after 4's file exists
-   and is fsynced.
+The cycle (`Engine.runSnapshot`):
+
+1. Freeze writers (the engine freeze lock), wait for group commit to fsync every
+   submitted line, copy state and record each log's durable byte offset in memory.
+2. Unfreeze: requests resume immediately; they append to the old segment beyond the
+   recorded offset, so nothing is lost while the snapshot file is written.
+3. Write `snapshot-<seq>.bin.tmp`, fsync, rename to `snapshot-<seq>.bin` (atomic on
+   POSIX), fsync the directory. The offsets live inside the snapshot payload.
+4. Rotate both WALs through the group committer (so rotation serializes behind pending
+   writes): `bookings.jsonl` becomes `bookings.jsonl.snap-<seq>`, a fresh live log opens.
+5. Prune snapshot files and segments below `seq-1` (two-deep retention).
 
 If the process dies between any two steps, recovery resolves like this: if a complete
 snapshot with a valid checksum and an offset file exists, load it and replay the tail of
@@ -85,28 +92,28 @@ snapshot can never run ahead of the durable log.
 
 ## Recovery path
 
-`replayLogs` gains a preamble: find the newest `snapshot-<seq>.bin` with a valid trailer,
-load it, then replay only segments with sequence >= the snapshot's segment and only bytes
-after the recorded offset. Log line format is unchanged, so a deployment can roll back to
-an engine without snapshot support by deleting snapshot files; the old replay path
-continues to work on any surviving logs.
+`recoverState` finds the newest `snapshot-<seq>.bin` with a valid trailer, applies it, then
+replays only segments with sequence >= the snapshot's and only bytes after the recorded
+offset. A corrupted newest snapshot falls back to replaying every segment from zero.
+Snapshot numbering continues from disk across restarts, so a fresh run never overwrites a
+snapshot file an older recovery path may still need. Log line format is unchanged, so a
+deployment can roll back to an engine without snapshot support by deleting snapshot files;
+the old replay path continues to work on any surviving logs.
 
 ## Metrics and verification
 
-- `/metrics` gains: `kavach_snapshots_total`, `kavach_last_snapshot_age_seconds`,
-  `kavach_recovery_replayed_lines` (the number that matters for restart time).
-- `sim/snapshot_test.py`: book N seats, snapshot mid-stream, kill -9 the engine mid-write,
-  restart, and assert exact state equality against a reference engine that never
-  crashed. This joins the nightly battery.
+- `/metrics` carries: `snapshots_total`, `last_snapshot_age_seconds`,
+  `recovery_replayed_lines` (the number that matters for restart time).
+- `sim/snapshot_test.py`: 18 checks; books, snapshots mid-stream, kill -9 mid-flight,
+  restarts, and asserts exact state equality, idempotency replay, waitlist survival and
+  2-deep segment compaction. It runs in `scripts/test.sh --full`.
 
-## Implementation plan
+## Implemented and next
 
-1. Snapshot writer/loader + offset-based tail replay, off by default
-   (`-snapshot-every 0`), behind the same flag surface as the rest of the engine.
-2. Enable by default in the demo (`-snapshot-every 10000 -snapshot-interval 5m`).
-3. `sim/snapshot_test.py` chaos coverage + battery case.
-4. Cluster mode ties in later: snapshots become the seed for a follower catch-up, which
+1. DONE: snapshot writer/loader, offset-based tail replay, volume + interval triggers,
+   two-deep pruning, metrics, `sim/snapshot_test.py` (18/18), wired into
+   `scripts/test.sh --full`.
+2. Demo enablement: flip the flags in the Render service once a soak run confirms
+   steady-state behavior (default stays off, so enabling is a one-flag change).
+3. Cluster mode ties in later: snapshots become the seed for a follower catch-up, which
    is the next doc after this one.
-
-Estimate: writer + loader + replay wiring is the bulk of the work, roughly 300-400 lines
-against the existing lock discipline; the chaos test is the part that must not be rushed.

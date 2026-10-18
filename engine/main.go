@@ -37,6 +37,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -659,14 +660,24 @@ func (r *LatencyRing) snapshot() (count int, p50, p95, p99 float64) {
 // flush+fsync covering the whole batch completes. The durability guarantee
 // is unchanged: nothing is acknowledged before it is on disk.
 type commitReq struct {
-	line string
-	done chan struct{}
+	line   string
+	done   chan struct{}
+	rotate string // non-empty: rotate the live log to this segment suffix
+	errCh  chan error
 }
 
 type GroupCommit struct {
 	ch   chan commitReq
 	file *os.File
 	w    *bufio.Writer
+	path string
+
+	// progress counters: submitted lines vs fsynced lines/bytes. The
+	// snapshotter uses them to find the exact durable byte offset its
+	// snapshot covers, and to wait until every submitted line is on disk.
+	submitted    int64
+	flushedLines int64
+	flushPos     int64
 }
 
 func NewGroupCommit(path string, queue int) (*GroupCommit, error) {
@@ -676,7 +687,7 @@ func NewGroupCommit(path string, queue int) (*GroupCommit, error) {
 	if err != nil {
 		return nil, err
 	}
-	g := &GroupCommit{ch: make(chan commitReq, queue), file: f, w: bufio.NewWriterSize(f, 1<<20)}
+	g := &GroupCommit{ch: make(chan commitReq, queue), file: f, w: bufio.NewWriterSize(f, 1<<20), path: path}
 	go g.run()
 	return g, nil
 }
@@ -686,11 +697,22 @@ func NewGroupCommit(path string, queue int) (*GroupCommit, error) {
 // every writer in the batch.
 func (g *GroupCommit) run() {
 	for first := range g.ch {
+		if first.rotate != "" { // rotation serializes behind pending writes
+			if first.errCh != nil {
+				first.errCh <- g.doRotate(first.rotate)
+			}
+			continue
+		}
+		var rot []commitReq
 		batch := []commitReq{first}
 	drain:
 		for len(batch) < 4096 {
 			select {
 			case r := <-g.ch:
+				if r.rotate != "" { // a rotation is its own fsync boundary
+					rot = append(rot, r)
+					continue
+				}
 				batch = append(batch, r)
 			default:
 				break drain
@@ -702,17 +724,98 @@ func (g *GroupCommit) run() {
 		}
 		g.w.Flush()
 		g.file.Sync()
+		var n int64
+		for _, r := range batch {
+			n += int64(len(r.line) + 1)
+		}
+		atomic.AddInt64(&g.flushedLines, int64(len(batch)))
+		atomic.AddInt64(&g.flushPos, n)
 		for _, r := range batch {
 			close(r.done)
+		}
+		// rotations queued behind this batch run now: every line submitted
+		// before them is fsynced, everything after lands in the new segment
+		for _, r := range rot {
+			if r.errCh != nil {
+				r.errCh <- g.doRotate(r.rotate)
+			}
 		}
 	}
 }
 
 // commit blocks until the batch containing line has been flushed and fsynced.
 func (g *GroupCommit) commit(line string) {
+	atomic.AddInt64(&g.submitted, 1)
 	r := commitReq{line: line, done: make(chan struct{})}
 	g.ch <- r
 	<-r.done
+}
+
+// flushedBytes is the durable byte position of the log: every byte before it
+// is fsynced. A snapshot taken under the engine freeze lock records this
+// value per log; everything at or before it is inside the snapshot.
+func (g *GroupCommit) flushedBytes() int64 { return atomic.LoadInt64(&g.flushPos) }
+
+// waitQuiesced blocks until every submitted line has been fsynced. Called
+// under the engine freeze lock, so no new lines can appear while waiting.
+func (g *GroupCommit) waitQuiesced() {
+	for atomic.LoadInt64(&g.submitted) != atomic.LoadInt64(&g.flushedLines) {
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// rotateTo moves the live log to <path><suffix> and opens a fresh one. It is
+// executed on the committer goroutine, so it serializes behind every pending
+// write: an event either lands in the old segment (beyond the snapshot
+// offset, replayed from the tail) or in the new one. Never both, never lost.
+func (g *GroupCommit) rotateTo(suffix string) error {
+	done := make(chan error, 1)
+	g.ch <- commitReq{rotate: suffix, errCh: done}
+	return <-done
+}
+
+func (g *GroupCommit) reopen() error {
+	f, err := os.OpenFile(g.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	g.file = f
+	g.w = bufio.NewWriterSize(f, 1<<20)
+	return nil
+}
+
+func (g *GroupCommit) doRotate(suffix string) error {
+	if err := g.w.Flush(); err != nil {
+		return err
+	}
+	if err := g.file.Sync(); err != nil {
+		return err
+	}
+	if err := g.file.Close(); err != nil {
+		return err
+	}
+	seg := g.path + suffix
+	if err := os.Rename(g.path, seg); err != nil {
+		// the rename failed before any data moved: keep serving on the old file
+		if rb := g.reopen(); rb != nil {
+			return fmt.Errorf("rotate rename failed (%v) AND reopen failed (%v)", err, rb)
+		}
+		return err
+	}
+	if err := g.reopen(); err != nil {
+		// roll the segment back so the live path exists again
+		if rb := os.Rename(seg, g.path); rb == nil {
+			if rb2 := g.reopen(); rb2 == nil {
+				return fmt.Errorf("rotate reopened old log (%v); new log unavailable (%v)", rb2, err)
+			}
+		}
+		return err
+	}
+	if d, err := os.Open(filepath.Dir(g.path)); err == nil {
+		d.Sync()
+		d.Close()
+	}
+	return nil
 }
 
 // ---------- restart recovery: the event log is the source of truth ----------
@@ -726,6 +829,18 @@ func (g *GroupCommit) commit(line string) {
 func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore,
 	wl *Waitlist, idem *IdemStore, holdTTL time.Duration,
 	bid, rid, waitlistSeq *uint64) (int, int, int) {
+	b, r, wq, _ := replayLogsPaths([]string{bookPath, holdPath}, inv, res, wl, idem,
+		holdTTL, bid, rid, waitlistSeq, nil)
+	return b, r, wq
+}
+
+// replayLogsPaths replays one or more log files (the live logs plus any
+// rotated segments) in one merged, timestamp-ordered pass. starts maps a
+// file path to the byte offset recovery must seek to: everything before it
+// is already inside a snapshot, so replaying it would double-apply state.
+func replayLogsPaths(paths []string, inv *Inventory, res *ReservationStore,
+	wl *Waitlist, idem *IdemStore, holdTTL time.Duration,
+	bid, rid, waitlistSeq *uint64, starts map[string]int64) (int, int, int, int) {
 
 	type event struct {
 		kind      string
@@ -742,15 +857,22 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 		expiresAt int64
 	}
 	var events []event
+	lines := 0
 	readLog := func(path string) {
 		f, err := os.Open(path)
 		if err != nil {
 			return // no log yet: a first boot
 		}
 		defer f.Close()
+		if off := starts[path]; off > 0 {
+			if _, err := f.Seek(off, io.SeekStart); err != nil {
+				log.Printf("kavach recovery: seek to %d in %s failed (%v); replaying from zero", off, path, err)
+			}
+		}
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 1<<20), 1<<20)
 		for sc.Scan() {
+			lines++
 			var m map[string]interface{}
 			if json.Unmarshal(sc.Bytes(), &m) != nil {
 				continue
@@ -775,8 +897,9 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 			})
 		}
 	}
-	readLog(bookPath)
-	readLog(holdPath)
+	for _, p := range paths {
+		readLog(p)
+	}
 	sort.Slice(events, func(i, j int) bool { return events[i].ts < events[j].ts })
 
 	idNum := func(id string) uint64 {
@@ -848,7 +971,7 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 			wl.remove(ev.wlID)
 		}
 	}
-	return bookings, reservations, queued
+	return bookings, reservations, queued, lines
 }
 
 // ---------- the engine ----------
@@ -883,6 +1006,19 @@ type Engine struct {
 	chaosStallMs int
 	chaosProb    float64
 	chaosPanic   float64
+
+	// snapshot machinery: freeze gates every state mutation, so the
+	// snapshotter can copy exact instant state without racing writers.
+	freeze          sync.RWMutex
+	snapEvery       int
+	snapInterval    time.Duration
+	snapDir         string
+	snapMu          sync.Mutex
+	snapSeq         uint64
+	snapTotal       int64
+	lastSnapAt      int64
+	eventsSince     int64
+	recoveryLines   int64
 	peers        []string
 	selfIdx      int
 	httpc        *http.Client
@@ -922,6 +1058,7 @@ func (e *Engine) appendLog(id, key, tenant, user string, seats []int) {
 	line, _ := json.Marshal(map[string]interface{}{
 		"booking_id": id, "key": key, "tenant": tenant, "user": user, "seats": seats, "ts": time.Now().UnixNano(),
 	})
+	atomic.AddInt64(&e.eventsSince, 1)
 	e.bookGC.commit(string(line))
 }
 
@@ -932,6 +1069,7 @@ func (e *Engine) appendHold(event string, r *Reservation, bookingID string) {
 		"event": event, "reservation_id": r.ID, "tenant": r.Tenant, "user": r.User,
 		"seats": r.Seats, "booking_id": bookingID, "expires_at": r.ExpiresAt.UnixNano(), "ts": time.Now().UnixNano(),
 	})
+	atomic.AddInt64(&e.eventsSince, 1)
 	e.holdGC.commit(string(line))
 }
 
@@ -993,7 +1131,9 @@ func (e *Engine) worker() {
 			if e.chaosPanic > 0 && rand.Float64() < e.chaosPanic {
 				panic("kavach chaos injection")
 			}
+			e.freeze.RLock()
 			e.process(j)
+			e.freeze.RUnlock()
 		}()
 	}
 }
@@ -1001,6 +1141,8 @@ func (e *Engine) worker() {
 // expireSweep returns abandoned holds to the free pool. Each reservation
 // changes state by CAS, so a confirm racing an expiry has exactly one winner.
 func (e *Engine) expireSweep() {
+	e.freeze.RLock()
+	defer e.freeze.RUnlock()
 	now := time.Now()
 	for _, r := range e.res.expired(now) {
 		if r.transition(resHeld, resExpired) {
@@ -1702,6 +1844,15 @@ func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"pg_failed":           atomic.LoadInt64(&e.pgFailed),
 		"chaos_stalls":        atomic.LoadInt64(&e.chaosStalls),
 		"chaos_panics":        atomic.LoadInt64(&e.chaosPanics),
+		"snapshots_total":     atomic.LoadInt64(&e.snapTotal),
+		"last_snapshot_age_seconds": func() float64 {
+			ls := atomic.LoadInt64(&e.lastSnapAt)
+			if ls == 0 {
+				return -1
+			}
+			return time.Since(time.Unix(0, ls)).Seconds()
+		}(),
+		"recovery_replayed_lines": atomic.LoadInt64(&e.recoveryLines),
 		"latency_ms":        map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
 		"uptime_seconds":    time.Since(e.started).Seconds(),
 	})
@@ -1727,6 +1878,8 @@ func main() {
 	tenantSecrets := flag.String("hmac-secrets", "", "per-tenant HMAC secrets as tenant:secret,...; verifies each request against ITS tenant's secret (overrides -hmac-secret; tenants without an entry are rejected)")
 	userRate := flag.Float64("user-rate", 2, "per-user requests/second (0 disables)")
 	userBurst := flag.Float64("user-burst", 5, "per-user burst")
+	snapshotEvery := flag.Int("snapshot-every", 0, "WAL snapshots: take a snapshot every N committed log events, then rotate the logs (0 = off)")
+	snapshotInterval := flag.Int("snapshot-interval", 0, "WAL snapshots: also snapshot after this many seconds with new events (0 = off; -snapshot-every alone also works)")
 	ipRate := flag.Float64("ip-rate", 20, "per-IP requests/second (0 disables)")
 	ipBurst := flag.Float64("ip-burst", 40, "per-IP burst")
 	flag.Parse()
@@ -1782,11 +1935,27 @@ func main() {
 		selfIdx:      selfIdx,
 		httpc:        &http.Client{Timeout: 5 * time.Second},
 		started:  time.Now(),
+		snapEvery:    *snapshotEvery,
+		snapInterval: time.Duration(*snapshotInterval) * time.Second,
+		snapDir:      filepath.Dir(*logPath),
+		lastSnapAt:   time.Now().UnixNano(),
 	}
-	// restart recovery: replay the append-only logs BEFORE accepting traffic
-	bRec, rRec, wRec := replayLogs(*logPath, *holdsLog, e.inv, e.res, e.wl, e.idem,
-		e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
-	if bRec+rRec+wRec > 0 {
+	// restart recovery: newest snapshot first (if any), then the log tail
+	// after its recorded offsets; without a snapshot, the full logs replay.
+	snapSeq, bRec, rRec, wRec, rLines := recoverState(filepath.Dir(*logPath), *logPath, *holdsLog,
+		e.inv, e.res, e.wl, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+	atomic.StoreInt64(&e.recoveryLines, int64(rLines))
+	// snapshot numbering continues from disk: a fresh run must never
+	// overwrite a snapshot file that an older recovery path may still need
+	if uint64(snapSeq) > e.snapSeq {
+		e.snapSeq = uint64(snapSeq)
+	}
+	if hs := highestSnapshotSeq(filepath.Dir(*logPath)); uint64(hs) > e.snapSeq {
+		e.snapSeq = uint64(hs)
+	}
+	if snapSeq > 0 {
+		log.Printf("kavach recovery: snapshot %d loaded; %d bookings, %d reservations, %d waitlist entries restored; %d tail lines replayed", snapSeq, bRec, rRec, wRec, rLines)
+	} else if bRec+rRec+wRec > 0 {
 		log.Printf("kavach recovery: %d bookings, %d reservations, %d waitlist entries restored", bRec, rRec, wRec)
 	}
 	if *pgDSN != "" { // write-behind: the local logs stay the source of truth, Postgres mirrors them
@@ -1840,6 +2009,26 @@ func main() {
 			e.expireSweep()
 		}
 	}()
+	if *snapshotEvery > 0 || *snapshotInterval > 0 {
+		go func() { // snapshot trigger: volume or interval, never both idle
+			t := time.NewTicker(1 * time.Second)
+			for range t.C {
+				ev := atomic.LoadInt64(&e.eventsSince)
+				if ev <= 0 {
+					continue
+				}
+				due := *snapshotEvery > 0 && ev >= int64(*snapshotEvery)
+				if !due && *snapshotInterval > 0 {
+					due = time.Since(time.Unix(0, atomic.LoadInt64(&e.lastSnapAt))) >= e.snapInterval
+				}
+				if due {
+					if err := e.runSnapshot(); err != nil {
+						log.Printf("kavach snapshot failed (state keeps running on the logs): %v", err)
+					}
+				}
+			}
+		}()
+	}
 	go func() { // webhook poster: deliveries never block the request path
 		client := &http.Client{Timeout: 5 * time.Second}
 		for ev := range e.webhookCh {
