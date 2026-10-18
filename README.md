@@ -1,12 +1,26 @@
 # Kavach
 
 [![CI](https://github.com/l72683876-beep/kavach-engine/actions/workflows/test.yml/badge.svg)](https://github.com/l72683876-beep/kavach-engine/actions/workflows/test.yml)
+[![Go](https://img.shields.io/badge/Go-1.22-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-4ade80.svg)](LICENSE)
+[![Live demo](https://img.shields.io/badge/Live_demo-kavach--live.onrender.com-22d3ee)](https://kavach-live.onrender.com)
+
+> Lakhs of people hit "book" in the same second. Kavach is the small Go engine that
+> decides, in nanoseconds, who gets the seat: no double-sells, no crashes, no hangs.
 
 **Kavach** (Hindi for "armor") is an open-source inventory-reservation and booking engine
-for ANY flash sale: e-commerce drop sales, event and hotel bookings, ticket queues,
-waitlists, or anything limited that lakhs of people want at the same second. Millions of
-requests at once, no crashes, no hangs, and never a double-sold item. It is one small,
-readable Go service that any app can put in front of its own logic.
+for any flash sale: e-commerce drop sales, event and hotel bookings, ticket queues,
+waitlists, or anything limited that lakhs of people want at the same second. It is one
+small, readable Go service that any app can put in front of its own logic.
+
+**Try it live:** [kavach-live.onrender.com](https://kavach-live.onrender.com) is a real
+flash-sale storefront (Aurora) running on Kavach. Browse deals, hold a seat, and watch
+the live seat board and 3D event venue under real load.
+
+**Selected for the XERJ Corpus Hub.** Kavach's security hardening, HMAC signatures bound
+to method+URI, user-bound idempotency keys, and 409 responses on /book, was reviewed and
+chosen by [XERJ](https://github.com/xerj-org/xerj) (an AI-native search engine used by
+coding agents) as a worked reference implementation, with attribution to this repo.
 
 IRCTC's Tatkal rush (lakhs of people hitting the same train seats at 10:00 AM) is the
 stress test we benchmark against, because it is the hardest version of this problem.
