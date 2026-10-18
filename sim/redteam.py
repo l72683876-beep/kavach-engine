@@ -15,7 +15,7 @@ results = []
 def sign_headers(method, path, body, ts=None, rid=None, secret=SECRET):
     ts = ts if ts is not None else str(int(time.time()))
     rid = rid if rid is not None else uuid.uuid4().hex
-    mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n").encode() + body, hashlib.sha256)
+    mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n" + KEY + "\n").encode() + body, hashlib.sha256)
     return {"Authorization": "Bearer " + KEY, "X-Kavach-Timestamp": ts,
             "X-Kavach-Request-Id": rid, "X-Kavach-Signature": mac.hexdigest(),
             "Content-Type": "application/json"}

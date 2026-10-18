@@ -16,7 +16,7 @@ func signedAuthReq(t *testing.T, a *Auth, key, secret, body string) (string, int
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	rid := "rid-" + body
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(ts + "\n" + rid + "\nPOST\n/book\n"))
+	mac.Write([]byte(ts + "\n" + rid + "\nPOST\n/book\n" + key + "\n"))
 	mac.Write([]byte(body))
 	r := httptest.NewRequest("POST", "/book", bytes.NewReader([]byte(body)))
 	r.Header.Set("Authorization", "Bearer "+key)
@@ -43,13 +43,29 @@ func TestPerTenantSecrets(t *testing.T) {
 	}
 }
 
-// Default (shared secret) behavior is unchanged: valid signatures pass. The
-// cross-tenant swap under one shared secret remains possible by default; that
-// is the documented gap -hmac-secrets closes when it is enabled.
-func TestSharedSecretUnchanged(t *testing.T) {
+// Shared-secret mode binds each signature to its api key: a signature made
+// under one key passes under that key, and is rejected under any other key
+// even with one shared secret. The shared secret itself still means any
+// holder can sign for any tenant; per-tenant secrets (-hmac-secrets) close
+// that completely.
+func TestSharedSecretKeyBound(t *testing.T) {
 	a := newAuthWithTenantSecrets("k1:t1,k2:t2", "shared", "")
 	body := `{"user_id":"u","idempotency_key":"k","seats":1}`
 	if tenant, st, _ := signedAuthReq(t, a, "k2", "shared", body); tenant != "t2" || st != 0 {
-		t.Fatalf("shared secret default: got tenant=%q status=%d, want t2/0", tenant, st)
+		t.Fatalf("correct tenant2 under shared secret: got tenant=%q status=%d, want t2/0", tenant, st)
+	}
+	// k1's signature replayed under k2's key: rejected.
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	rid := "rid-cross"
+	mac := hmac.New(sha256.New, []byte("shared"))
+	mac.Write([]byte(ts + "\n" + rid + "\nPOST\n/book\n" + "k1" + "\n"))
+	mac.Write([]byte(body))
+	r := httptest.NewRequest("POST", "/book", bytes.NewReader([]byte(body)))
+	r.Header.Set("Authorization", "Bearer k2")
+	r.Header.Set("X-Kavach-Timestamp", ts)
+	r.Header.Set("X-Kavach-Request-Id", rid)
+	r.Header.Set("X-Kavach-Signature", hex.EncodeToString(mac.Sum(nil)))
+	if _, st, _ := a.verify(r, []byte(body)); st != 401 {
+		t.Fatalf("tenant1-signed body under tenant2 key: status=%d, want 401", st)
 	}
 }

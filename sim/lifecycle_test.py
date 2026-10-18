@@ -20,7 +20,7 @@ def request(method, path, body=None, key=API_KEY, sign=True, auth=True):
         headers["X-Kavach-Timestamp"] = ts
         headers["X-Kavach-Request-Id"] = rid
         if sign:
-            mac = hmac.new(SECRET.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n").encode() + body_bytes, hashlib.sha256)
+            mac = hmac.new(SECRET.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n" + key + "\n").encode() + body_bytes, hashlib.sha256)
             headers["X-Kavach-Signature"] = mac.hexdigest()
     conn.request(method, path, body=body_bytes if body is not None else None, headers=headers)
     r = conn.getresponse(); raw = r.read(); conn.close()

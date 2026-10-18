@@ -121,7 +121,9 @@ Local mode (no keys) stays the two-minute default above. For anything exposed to
 
 Every write must then carry: `Authorization: Bearer <key>`, `X-Kavach-Timestamp`
 (unix seconds, ±5 min), `X-Kavach-Request-Id` (unique per request), and
-`X-Kavach-Signature` = hex(HMAC-SHA256(secret, timestamp + "\n" + request_id + "\n" + method + "\n" + request_uri + "\n" + raw_body)): the signature is bound to exactly one request, so a captured one cannot be replayed against another path.
+`X-Kavach-Signature` = hex(HMAC-SHA256(secret, timestamp + "\n" + request_id + "\n" + method + "\n" + request_uri + "\n" + api_key + "\n" + raw_body)): the signature is bound to exactly one request and one api key, so a captured one cannot be replayed against another path or under another tenant's key.
+
+> **Wire-format note (2026-10-18):** the api key is now part of the MAC in both shared-secret and per-tenant modes. This closes cross-tenant signature replay under a shared secret. Both bundled SDKs (Python and JavaScript) are updated; signatures made by older SDK versions are rejected with 401.
 Replayed requests are rejected; a key reused with a different payload gets
 `idempotency_conflict`; `GET /status?idempotency_key=...` resolves an ambiguous
 timeout. A confirmed response means the booking is already fsynced to disk

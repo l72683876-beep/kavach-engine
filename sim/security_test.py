@@ -19,7 +19,7 @@ def request(method, path, body=None, auth=True, sign=True, ts_drift=0, rid=None,
         headers["X-Kavach-Timestamp"] = ts
         headers["X-Kavach-Request-Id"] = rid
         if sign:
-            mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n").encode() + body_bytes, hashlib.sha256)
+            mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n" + key + "\n").encode() + body_bytes, hashlib.sha256)
             headers["X-Kavach-Signature"] = mac.hexdigest()
     conn.request(method, path, body=body_bytes if body is not None else None, headers=headers)
     r = conn.getresponse(); raw = r.read(); conn.close()
@@ -58,7 +58,7 @@ booking_id = d.get("booking_id", "")
 ts = str(int(time.time()))
 def raw_replay():
     body = json.dumps({"user_id": "priya", "idempotency_key": "ok-1", "seats": 1}).encode()
-    mac = hmac.new(SECRET.encode(), (ts + "\n" + "fixed-rid-1" + "\nPOST\n/book\n").encode() + body, hashlib.sha256).hexdigest()
+    mac = hmac.new(SECRET.encode(), (ts + "\n" + "fixed-rid-1" + "\nPOST\n/book\n" + API_KEY + "\n").encode() + body, hashlib.sha256).hexdigest()
     conn = http.client.HTTPConnection(HOST, PORT, timeout=30)
     conn.request("POST", "/book", body=body, headers={
         "Content-Type": "application/json", "Authorization": "Bearer " + API_KEY,

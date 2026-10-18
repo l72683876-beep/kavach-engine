@@ -104,9 +104,9 @@
   },
   {
    "cat": "auth",
-   "name": "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)",
+   "name": "tenant2 key rejects tenant1-signed body (MAC binds the api key)",
    "ok": true,
-   "detail": "status=401 -> CLOSED when -hmac-secrets sets per-tenant secrets (shipped 2026-10-18); shared-secret default still exposed, MAC-over-key would be SDK breaking"
+   "detail": "status=401"
   },
   {
    "cat": "rate",
@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=2 ids=1"
+   "detail": "confirmed=4 ids=1"
   },
   {
    "cat": "race",
@@ -589,12 +589,5 @@
    "detail": "status=200"
   }
  ],
- "findings": [
-  {
-   "cat": "auth",
-   "name": "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)",
-   "ok": true,
-   "detail": "status=401 -> CLOSED when -hmac-secrets sets per-tenant secrets (shipped 2026-10-18); shared-secret default still exposed, MAC-over-key would be SDK breaking"
-  }
- ]
+ "findings": []
 }

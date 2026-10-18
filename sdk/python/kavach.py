@@ -49,7 +49,7 @@ class Kavach:
                 # the signature covers method + path + body: one signature,
                 # one request, no replay against another endpoint
                 mac = _hmac.new(self.hmac_secret.encode(),
-                                (ts + "\n" + rid + "\n" + method + "\n" + path + "\n").encode() + body,
+                                (ts + "\n" + rid + "\n" + method + "\n" + path + "\n" + self.api_key + "\n").encode() + body,
                                 hashlib.sha256)
                 h["X-Kavach-Timestamp"] = ts
                 h["X-Kavach-Request-Id"] = rid

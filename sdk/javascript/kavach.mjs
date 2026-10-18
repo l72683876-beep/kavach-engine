@@ -39,7 +39,7 @@ export class Kavach {
         const ts = String(Math.floor(Date.now() / 1000));
         const rid = randomUUID().replace(/-/g, "");
         const mac = createHmac("sha256", this.hmacSecret)
-          .update(`${ts}\n${rid}\n${method}\n${path}\n`)
+          .update(`${ts}\n${rid}\n${method}\n${path}\n${this.apiKey}\n`)
           .update(body)
           .digest("hex");
         h["X-Kavach-Timestamp"] = ts;

@@ -21,7 +21,7 @@ def check(cat, name, ok, detail=""):
 def sign(key, method, path, body, secret=SECRET, ts=None, rid=None):
     ts = str(int(time.time())) if ts is None else ts
     rid = uuid.uuid4().hex if rid is None else rid
-    mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n").encode() + body, hashlib.sha256)
+    mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n" + key + "\n").encode() + body, hashlib.sha256)
     return {"Authorization": "Bearer " + key, "X-Kavach-Timestamp": ts,
             "X-Kavach-Request-Id": rid, "X-Kavach-Signature": mac.hexdigest(),
             "Content-Type": "application/json"}
@@ -94,8 +94,9 @@ cases.append(("auth", "single bit flip in body", bitflip))
 cases.append(("auth", "wrong HMAC secret", lambda: (lambda r: r[0] == 401)(raw(ER, "POST", "/book", B, sign(KEY, "POST", "/book", B, secret="wrongsecret")))))
 cases.append(("auth", "signature not valid hex", lambda: (lambda r: r[0] == 401)(raw(ER, "POST", "/book", B, {**good, "X-Kavach-Signature": "zzzznot Hex!!", "X-Kavach-Request-Id": uuid.uuid4().hex}))))
 def shared_secret_forgery():
+    # MAC binds the api key: k1's signature replayed under k2's key is rejected
     r = raw(ER, "POST", "/book", B, {**sign(KEY, "POST", "/book", B), "Authorization": "Bearer " + KEY2, "X-Kavach-Request-Id": uuid.uuid4().hex})
-    return check("auth", "FINDING: tenant2 key accepts tenant1-signed body (MAC does not bind the api key)", True, "status=%s -> CLOSED when -hmac-secrets sets per-tenant secrets (shipped 2026-10-18); shared-secret default still exposed, MAC-over-key would be SDK breaking" % r[0])
+    return check("auth", "tenant2 key rejects tenant1-signed body (MAC binds the api key)", r[0] == 401, "status=%s" % r[0])
 for cat, name, fn in cases:
     try:
         check(cat, name, fn())

@@ -308,11 +308,13 @@ func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
 	a.nonces[rid] = now + a.window
 	a.mu.Unlock()
 	mac := hmac.New(sha256.New, secret)
-	// The MAC covers the timestamp, request id, the METHOD and REQUEST URI,
-	// and the body: a captured signature is bound to exactly one request, so
-	// it cannot be replayed against a different path or query string.
+	// The MAC covers the timestamp, request id, the METHOD, the REQUEST URI,
+	// the tenant's api key, and the body: a captured signature is bound to
+	// exactly one request AND one key, so it cannot be replayed against a
+	// different path or reused under another tenant's key (closes the shared-
+	// secret cross-tenant replay gap; SDKs updated in lockstep 2026-10-18).
 	mac.Write([]byte(ts + "\n" + rid + "\n"))
-	mac.Write([]byte(r.Method + "\n" + r.URL.RequestURI() + "\n"))
+	mac.Write([]byte(r.Method + "\n" + r.URL.RequestURI() + "\n" + key + "\n"))
 	mac.Write(body)
 	want, err := hex.DecodeString(sig)
 	if err != nil || !hmac.Equal(mac.Sum(nil), want) {
@@ -1721,7 +1723,7 @@ func main() {
 	chaosProb := flag.Float64("chaos-prob", 0, "chaos: probability a request hits a stall")
 	chaosPanic := flag.Float64("chaos-panic", 0, "chaos: probability a worker panics (contained; the engine survives)")
 	apiKeys := flag.String("api-keys", "", "API keys as key:tenant,key:tenant (empty = local mode, auth off)")
-	secret := flag.String("hmac-secret", "", "HMAC secret; when set, requests must be signed (X-Kavach-Timestamp, X-Kavach-Request-Id, X-Kavach-Signature over timestamp\\nrequest-id\\nbody)")
+	secret := flag.String("hmac-secret", "", "HMAC secret; when set, requests must be signed (X-Kavach-Timestamp, X-Kavach-Request-Id, X-Kavach-Signature over timestamp\\nrequest-id\\nmethod\\nuri\\napi-key\\nbody; the api key is part of the MAC in both modes)")
 	tenantSecrets := flag.String("hmac-secrets", "", "per-tenant HMAC secrets as tenant:secret,...; verifies each request against ITS tenant's secret (overrides -hmac-secret; tenants without an entry are rejected)")
 	userRate := flag.Float64("user-rate", 2, "per-user requests/second (0 disables)")
 	userBurst := flag.Float64("user-burst", 5, "per-user burst")
