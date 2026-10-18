@@ -12,10 +12,10 @@ HOST, PORT = "127.0.0.1", int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 KEY, KEY2, SECRET = "testkey", "otherkey", "testsecret"
 results = []
 
-def sign_headers(method, path, body, ts=None, rid=None, secret=SECRET):
+def sign_headers(method, path, body, ts=None, rid=None, secret=SECRET, key=KEY):
     ts = ts if ts is not None else str(int(time.time()))
     rid = rid if rid is not None else uuid.uuid4().hex
-    mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n" + KEY + "\n").encode() + body, hashlib.sha256)
+    mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\n" + key + "\n").encode() + body, hashlib.sha256)
     return {"Authorization": "Bearer " + KEY, "X-Kavach-Timestamp": ts,
             "X-Kavach-Request-Id": rid, "X-Kavach-Signature": mac.hexdigest(),
             "Content-Type": "application/json"}
@@ -38,7 +38,7 @@ def raw(method, path, body=None, headers=None):
 def req(method, path, obj=None, key=KEY, ts=None, rid=None, secret=SECRET,
         sign_path=None, omit_auth=False, extra=None):
     body = json.dumps(obj).encode() if obj is not None else b""
-    h = sign_headers(method, sign_path or path, body, ts=ts, rid=rid, secret=secret)
+    h = sign_headers(method, sign_path or path, body, ts=ts, rid=rid, secret=secret, key=key)
     h["Authorization"] = "Bearer " + key
     if omit_auth:
         h = {k: v for k, v in h.items() if k != "Authorization"}
