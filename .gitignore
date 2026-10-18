@@ -5,3 +5,5 @@ sim/run_*.json
 sim/*.log
 chaos.log
 __pycache__/
+engine/snap_*.jsonl*
+engine/snapshot-*.bin
