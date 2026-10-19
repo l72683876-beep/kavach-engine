@@ -3,14 +3,18 @@
 import argparse, asyncio, collections, json, random, time
 import aiohttp
 
-async def attempt(session, uid, key, seats, stats, is_bot, base, max_tries=8):
+async def attempt(session, uid, key, seats, stats, is_bot, base, ev="", max_tries=8):
     for i in range(max_tries):
+        t0 = time.perf_counter()
         try:
-            async with session.post(base + "/book", json={
-                "user_id": uid, "idempotency_key": key, "seats": seats}) as r:
+            payload = {"user_id": uid, "idempotency_key": key, "seats": seats}
+            if ev:
+                payload["event_id"] = ev
+            async with session.post(base + "/book", json=payload) as r:
                 data = await r.json()
                 st = data.get("status", "?")
                 stats["statuses"][st] += 1
+                stats["latency_ms"].append((time.perf_counter() - t0) * 1000.0)
                 if st == "confirmed":
                     stats["confirmed_seats"] += seats
                     return
@@ -32,8 +36,9 @@ async def burst_mode(args, stats):
         async def one(n):
             async with sem:
                 uid = f"user{n}"
+                ev = f"ev{n % args.events}" if args.events else ""
                 seats = 2 if random.random() < 0.1 else 1
-                await attempt(s, uid, f"{uid}-key", seats, stats, False, args.base)
+                await attempt(s, uid, f"{uid}-key", seats, stats, False, args.base, ev)
         t0 = time.perf_counter()
         await asyncio.gather(*[one(i) for i in range(args.users)])
         return time.perf_counter() - t0
@@ -68,10 +73,11 @@ async def main():
     ap.add_argument("--bots", type=float, default=0.0)
     ap.add_argument("--base", default="http://127.0.0.1:8080")
     ap.add_argument("--out", default="sim_results.json")
+    ap.add_argument("--events", type=int, default=0, help="spread users across N event ids (multi-shard test)")
     args = ap.parse_args()
 
     stats = {"statuses": collections.Counter(), "confirmed_seats": 0,
-             "errors": 0, "gave_up": 0}
+             "errors": 0, "gave_up": 0, "latency_ms": []}
     dur = await (hammer_mode(args, stats) if args.total else burst_mode(args, stats))
 
     async with aiohttp.ClientSession() as s:
@@ -79,7 +85,14 @@ async def main():
         metrics = await (await s.get(args.base + "/metrics")).json()
 
     total_sent = sum(stats["statuses"].values())
+    lat = sorted(stats["latency_ms"])
+    def pct(q):
+        return round(lat[min(len(lat) - 1, int(len(lat) * q))], 1) if lat else None
     report = {
+        "latency_ms_p50": pct(0.50),
+        "latency_ms_p95": pct(0.95),
+        "latency_ms_p99": pct(0.99),
+        "latency_ms_max": round(lat[-1], 1) if lat else None,
         "mode": "hammer" if args.total else "burst",
         "wall_seconds": round(dur, 2),
         "requests_sent_by_clients": total_sent,
