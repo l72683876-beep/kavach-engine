@@ -122,16 +122,20 @@ func (inv *Inventory) release(seats []int) {
 // take/commit path; restart recovery replays through them.
 func (inv *Inventory) markSold(seats []int) {
 	fromHeld := int64(0)
+	applied := int64(0)
 	for _, s := range seats {
 		if s-inv.offset < 0 || s-inv.offset >= len(inv.seats) {
 			continue // replaying a log from a bigger inventory: nothing to mark
 		}
+		applied++ // only seats that actually landed on this slice count, so a
+		// follower replaying a leader's other-slice bookings does not inflate
+		// its sold counter (the cluster view aggregates per-node counters)
 		i := s - inv.offset
 		if atomic.SwapInt32(&inv.seats[i], seatSold) == seatHeld {
 			fromHeld++ // this seat was replayed as a hold first: stop counting it held
 		}
 	}
-	atomic.AddInt64(&inv.sold, int64(len(seats)))
+	atomic.AddInt64(&inv.sold, applied)
 	atomic.AddInt64(&inv.held, -fromHeld)
 }
 
@@ -163,6 +167,45 @@ func (inv *Inventory) freeHeld(seats []int) {
 
 func (inv *Inventory) stats() (total, sold, held int) {
 	return len(inv.seats), int(atomic.LoadInt64(&inv.sold)), int(atomic.LoadInt64(&inv.held))
+}
+
+
+// peerSliceSeats asks a peer how many seats its own slice holds, retrying
+// briefly because a cluster's nodes may still be booting. Cluster-mode peers
+// answer /seats with a per-node map keyed by their addr; standalone engines
+// answer with a flat total.
+func peerSliceSeats(peer string) (int, error) {
+	client := &http.Client{Timeout: 3 * time.Second}
+	var lastErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		resp, err := client.Get("http://" + peer + "/seats")
+		if err != nil {
+			lastErr = err
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		var body map[string]any
+		err = json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		if nodes, ok := body["nodes"].(map[string]any); ok {
+			if m, ok := nodes[peer].(map[string]any); ok {
+				if t, ok := m["total"].(float64); ok {
+					return int(t), nil
+				}
+			}
+			return 0, fmt.Errorf("/seats has no node entry for %s", peer)
+		}
+		if t, ok := body["total"].(float64); ok {
+			return int(t), nil
+		}
+		return 0, fmt.Errorf("/seats missing total")
+	}
+	return 0, lastErr
 }
 
 // ---------- rate limiter (the anti-bot gate) ----------
@@ -1867,8 +1910,20 @@ func main() {
 		}
 	}
 	offset := 0
-	if len(peers) > 1 {
-		offset = selfIdx * *seats // this node owns seats [offset, offset+seats)
+	if len(peers) > 1 && selfIdx > 0 {
+		// This node owns seats [offset, offset+seats): the offset is the sum
+		// of the slice sizes of every peer listed BEFORE us. -peers carries
+		// no seat counts, so ask each preceding peer for its own slice size;
+		// the old selfIdx*seats shortcut was only correct when every node has
+		// the same seat count, and a wrong offset overlaps two nodes' slices
+		// and can double-book global seats. Fail hard rather than guess.
+		for i := 0; i < selfIdx; i++ {
+			n, err := peerSliceSeats(peers[i])
+			if err != nil {
+				log.Fatalf("kavach: cannot compute slice offset: peer %s: %v", peers[i], err)
+			}
+			offset += n
+		}
 	}
 
 	e := &Engine{
