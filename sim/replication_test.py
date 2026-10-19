@@ -3,7 +3,7 @@
 with the leader under traffic, reject writes with 503, survive a SIGKILL and
 catch up from its own WAL on restart, and re-attach when the leader itself
 restarts. The never-double-sell invariant must hold on both nodes."""
-import json, os, signal, socket, subprocess, sys, time, urllib.request, urllib.error
+import hashlib, hmac, json, os, signal, socket, subprocess, sys, time, urllib.request, urllib.error
 
 subprocess.run(["pkill", "-x", "kavach"], capture_output=True)
 time.sleep(1.0)
@@ -98,8 +98,44 @@ st, sL = req(L, "GET", "/seats")
 st, sF = req(F, "GET", "/seats")
 check("leader and follower agree exactly", sL.get("sold") == sF.get("sold") and sL.get("free") == sF.get("free"), f"L={sL} F={sF}")
 
-for p in [follower, leader]:
-    p.send_signal(signal.SIGTERM)
+# 5) failover: the leader dies for good, the follower is promoted and takes over
+leader.send_signal(signal.SIGKILL); leader.wait()
+
+def repl_req(port, method, path, secret="replsecret"):
+    ts = str(int(time.time()))
+    rid = f"e2e{time.time_ns()}"
+    mac = hmac.new(secret.encode(), (ts + "\n" + rid + "\n" + method + "\n" + path + "\nreplkey\n").encode(), hashlib.sha256).hexdigest()
+    r = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=b"" if method == "POST" else None, method=method,
+                               headers={"Authorization": "Bearer replkey", "X-Kavach-Timestamp": ts,
+                                        "X-Kavach-Request-Id": rid, "X-Kavach-Signature": mac})
+    try:
+        with urllib.request.urlopen(r, timeout=15) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        raw = e.read() or b"{}"
+        try:
+            return e.code, json.loads(raw)
+        except Exception:
+            return e.code, {"raw": raw.decode(errors="replace")}
+
+st, d = repl_req(F, "POST", "/internal/promote", secret="wrongsecret")
+check("promote with wrong secret rejected", st == 401, f"st={st} d={d}")
+st, d = repl_req(F, "POST", "/internal/promote")
+check("promote succeeds with signed request", st == 200 and d.get("status") == "promoted", f"st={st} d={d}")
+
+confirmed = 0
+for i in range(85, 90):
+    st, d = req(F, "POST", "/book", {"user_id": f"u{i}", "idempotency_key": f"bk{i}", "seats": 1})
+    if d.get("status") == "confirmed":
+        confirmed += 1
+check("promoted follower serves writes", confirmed == 5, f"confirmed={confirmed}")
+
+st, s = req(F, "GET", "/seats")
+check("promoted follower state advanced to 90", s.get("sold") == 90 and s.get("free") == 10, f"seats={s}")
+st, d = req(F, "GET", "/metrics")
+check("role reports leader after promote", d.get("role") == "leader", f"role={d.get('role')}")
+
+follower.send_signal(signal.SIGTERM)
 time.sleep(0.5)
 print(f"\n{sum(results)}/{len(results)} passed")
 sys.exit(0 if all(results) else 1)
