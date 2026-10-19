@@ -1,0 +1,35 @@
+# Local 3-node Kavach cluster, zero cost: docker compose up --build
+# n1 is the leader (serves writes), n2/n3 follow its WAL and take over
+# seat slices as declared in -peers. Dev-only credentials; do not reuse.
+services:
+  kavach-n1:
+    build: .
+    command: >
+      -addr :8080 -seats 20000
+      -peers kavach-n1:8080,kavach-n2:8080,kavach-n3:8080
+      -replicate-key devkey -replicate-secret devsecret
+      -log /data/bookings.jsonl -holds-log /data/holds.jsonl
+    volumes: [./data/n1:/data]
+    ports: ["8081:8080"]
+  kavach-n2:
+    build: .
+    command: >
+      -addr :8080 -seats 20000
+      -peers kavach-n1:8080,kavach-n2:8080,kavach-n3:8080
+      -replicate-key devkey -replicate-secret devsecret
+      -replicate-from http://kavach-n1:8080
+      -log /data/bookings.jsonl -holds-log /data/holds.jsonl
+    volumes: [./data/n2:/data]
+    ports: ["8082:8080"]
+    depends_on: [kavach-n1]
+  kavach-n3:
+    build: .
+    command: >
+      -addr :8080 -seats 20000
+      -peers kavach-n1:8080,kavach-n2:8080,kavach-n3:8080
+      -replicate-key devkey -replicate-secret devsecret
+      -replicate-from http://kavach-n1:8080
+      -log /data/bookings.jsonl -holds-log /data/holds.jsonl
+    volumes: [./data/n3:/data]
+    ports: ["8083:8080"]
+    depends_on: [kavach-n1]
