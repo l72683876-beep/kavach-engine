@@ -5,6 +5,9 @@
 #   --full also runs the chaos, recovery and cluster suites (slower).
 set -u
 cd "$(dirname "$0")/.."
+# snapshot state from ANY previous run (suite or manual) poisons every engine
+# that boots in engine/: snapshots load at startup even when snapshotting is off
+rm -f engine/snapshot-*.bin engine/*.snap-* 2>/dev/null || true
 FAILED=0
 RESULTS=""
 step() { printf '\n=== %s ===\n' "$1"; }
@@ -61,7 +64,7 @@ if [ "${1:-}" = "--full" ]; then
   python3 sim/cluster_test.py 8101  && ok "cluster"  || fail "cluster"
   python3 sim/replication_test.py 8111 && ok "replication e2e" || fail "replication e2e"
   python3 sim/crash_test.py 8123    && ok "crash (SIGKILL mid-write)" || fail "crash (SIGKILL mid-write)"
-  python3 sim/shard_test.py 8141    && ok "multi-shard e2e" || fail "multi-shard e2e"
+  python3 sim/shard_test.py engine/kavach    && ok "multi-shard e2e" || fail "multi-shard e2e"
 fi
 
 echo; echo "================ RESULT ================"

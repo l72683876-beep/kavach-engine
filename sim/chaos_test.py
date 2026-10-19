@@ -15,6 +15,13 @@ def get(path):
     with urllib.request.urlopen(f"http://127.0.0.1:{PORT}{path}", timeout=10) as r:
         return json.loads(r.read() or b"{}")
 
+import glob as _glob
+for _f in _glob.glob("engine/snapshot-*.bin") + _glob.glob("engine/*.snap-*"):
+    try:
+        os.remove(_f)
+    except OSError:
+        pass
+
 for f in ["ch_bookings.jsonl", "ch_holds.jsonl"]:
     subprocess.run(["rm", "-f", "engine/" + f])
 

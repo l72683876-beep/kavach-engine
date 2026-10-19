@@ -38,6 +38,7 @@ type replayEvent struct {
 	tenant    string
 	user      string
 	seats     []int
+	fp        string
 	wlID      string
 	wlSeats   int
 	expiresAt int64
@@ -66,7 +67,7 @@ func parseReplayEvent(line []byte) (replayEvent, bool) {
 		resID: gs("reservation_id"), tenant: gs("tenant"), user: gs("user"),
 		userID: gs("user_id"),
 		seats:  gi("seats"), wlID: gs("waitlist_id"), wlSeats: int(gf("seats")),
-		key:    gs("key"), expiresAt: int64(gf("expires_at")),
+		key:    gs("key"), expiresAt: int64(gf("expires_at")), fp: gs("fp"),
 	}, true
 }
 
@@ -95,7 +96,10 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 				*bid = idNum(ev.bookingID)
 			}
 			if ev.key != "" { // the retry-safety guarantee survives restarts too
-				fp := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", ev.key, ev.user, len(ev.seats)))))
+				fp := ev.fp
+			if fp == "" { // pre-fp WAL lines: recompute the legacy fingerprint
+				fp = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", ev.key, ev.user, len(ev.seats)))))
+			}
 				idem.mu.Lock()
 				idem.m[ev.tenant+"|"+ev.key] = &idemEntry{
 					Fingerprint: fp, Tenant: ev.tenant, LastSeen: time.Now(),

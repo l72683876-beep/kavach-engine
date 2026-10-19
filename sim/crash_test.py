@@ -68,6 +68,13 @@ def burst_holds(stop_at, acked, lock, prefix):
         i += 1
 
 # ---- 1. SIGKILL mid booking-burst: every acked booking must survive ----
+import glob as _glob
+for _f in _glob.glob("engine/snapshot-*.bin") + _glob.glob("engine/*.snap-*"):
+    try:
+        os.remove(_f)
+    except OSError:
+        pass
+
 for f in ["cw_bookings.jsonl", "cw_holds.jsonl"]:
     try: os.remove("engine/" + f)
     except FileNotFoundError: pass

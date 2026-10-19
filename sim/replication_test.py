@@ -54,7 +54,14 @@ def wait_converged(want_sold, limit=12.0):
 
 for n in ["L", "F"]:
     for suf in ["bookings", "holds"]:
-        for f in [f"repl_{n}_{suf}.jsonl"]:
+        import glob as _glob
+for _f in _glob.glob("engine/snapshot-*.bin") + _glob.glob("engine/*.snap-*"):
+    try:
+        os.remove(_f)
+    except OSError:
+        pass
+
+for f in [f"repl_{n}_{suf}.jsonl"]:
             try: os.remove("engine/" + f)
             except FileNotFoundError: pass
 

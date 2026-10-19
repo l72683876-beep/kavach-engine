@@ -37,6 +37,13 @@ for f in LOGS:
     except FileNotFoundError:
         pass
 
+import glob as _glob
+for _f in _glob.glob("engine/snapshot-*.bin") + _glob.glob("engine/*.snap-*"):
+    try:
+        os.remove(_f)
+    except OSError:
+        pass
+
 p = start()
 st, seats = req("GET", "/seats")
 check("engine up, 50 free", seats == {"total": 50, "sold": 0, "held": 0, "free": 50}, seats)

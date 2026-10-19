@@ -47,6 +47,13 @@ def start(node):
     time.sleep(0.7)
     return p
 
+import glob as _glob
+for _f in _glob.glob("engine/snapshot-*.bin") + _glob.glob("engine/*.snap-*"):
+    try:
+        os.remove(_f)
+    except OSError:
+        pass
+
 for n in range(N):
     for f in [f"cl{n}_bookings.jsonl", f"cl{n}_holds.jsonl"]:
         try:

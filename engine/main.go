@@ -1026,9 +1026,9 @@ type Engine struct {
 // appendLog writes, flushes, and fsyncs the booking BEFORE the caller may
 // acknowledge it: persist-before-ack. A confirmed response means the record
 // is on disk.
-func (e *Engine) appendLog(id, key, tenant, user string, seats []int) {
+func (e *Engine) appendLog(id, key, tenant, user string, seats []int, fp string) {
 	line, _ := json.Marshal(map[string]interface{}{
-		"booking_id": id, "key": key, "tenant": tenant, "user": user, "seats": seats, "ts": time.Now().UnixNano(),
+		"booking_id": id, "key": key, "tenant": tenant, "user": user, "seats": seats, "fp": fp, "ts": time.Now().UnixNano(),
 	})
 	atomic.AddInt64(&e.eventsSince, 1)
 	e.bookGC.commit(string(line))
@@ -1075,7 +1075,7 @@ func (e *Engine) process(j *job) {
 		return
 	}
 	id := fmt.Sprintf("BK%08d", atomic.AddUint64(&e.bid, 1))
-	e.appendLog(id, j.key, j.tenant, j.user, seats) // durable BEFORE the ack leaves the process
+	e.appendLog(id, j.key, j.tenant, j.user, seats, j.fp) // durable BEFORE the ack leaves the process
 	e.inv.commit(seats)
 	atomic.AddInt64(&e.confirmed, 1)
 	res := Result{Status: "confirmed", Seats: seats, BookingID: id}
@@ -1615,7 +1615,7 @@ func (e *Engine) handleConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	bookingID := fmt.Sprintf("BK%08d", atomic.AddUint64(&e.bid, 1))
 	res.BookingID = bookingID
-	e.appendLog(bookingID, "", res.Tenant, res.User, res.Seats) // durable BEFORE the ack
+	e.appendLog(bookingID, "", res.Tenant, res.User, res.Seats, "") // durable BEFORE the ack
 	e.inv.commit(res.Seats)
 	atomic.AddInt64(&e.confirmed, 1)
 	atomic.AddInt64(&e.holdsConfirm, 1)
