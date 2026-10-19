@@ -1,11 +1,15 @@
 {
+  "latency_ms_p50": 1612.4,
+  "latency_ms_p95": 1876.8,
+  "latency_ms_p99": 1912.3,
+  "latency_ms_max": 2071.4,
   "mode": "burst",
-  "wall_seconds": 2.35,
+  "wall_seconds": 2.17,
   "requests_sent_by_clients": 2000,
-  "throughput_rps": 849.4,
+  "throughput_rps": 921.1,
   "statuses": {
-    "confirmed": 181,
-    "sold_out": 1819
+    "confirmed": 189,
+    "sold_out": 1811
   },
   "confirmed_seats_client_view": 200,
   "server_view": {
@@ -18,7 +22,7 @@
     "auth_failures": 0,
     "chaos_panics": 0,
     "chaos_stalls": 0,
-    "confirmed": 181,
+    "confirmed": 189,
     "errors": 0,
     "forwarded": 0,
     "holds_confirmed": 0,
@@ -28,10 +32,11 @@
     "idem_conflicts": 0,
     "in_flight": 0,
     "ip_rate_limited": 0,
+    "last_snapshot_age_seconds": 3.335849747,
     "latency_ms": {
-      "p50": 418.94,
-      "p95": 450.389,
-      "p99": 452.674,
+      "p50": 289.343,
+      "p95": 344.07,
+      "p99": 344.837,
       "samples": 2000
     },
     "overloaded": 0,
@@ -39,9 +44,15 @@
     "pg_shipped": 0,
     "rate_limited": 0,
     "received": 2000,
+    "recovery_replayed_lines": 0,
     "replays_rejected": 0,
-    "sold_out": 1819,
-    "uptime_seconds": 3.023504672,
+    "replicated_lines": 0,
+    "replication_connected": 0,
+    "replication_streams": 0,
+    "role": "leader",
+    "snapshots_total": 0,
+    "sold_out": 1811,
+    "uptime_seconds": 3.335853027,
     "user_rate_limited": 0,
     "waitlist_cancelled": 0,
     "waitlist_fulfilled": 0,
@@ -57,6 +68,7 @@
     "concurrency": 0,
     "bots": 0.0,
     "base": "http://127.0.0.1:8080",
-    "out": "sim_results.json"
+    "out": "sim_results.json",
+    "events": 0
   }
 }
