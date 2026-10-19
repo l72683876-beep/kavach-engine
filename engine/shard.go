@@ -72,13 +72,17 @@ func requestEventID(r *http.Request, fromBody bool) (string, bool) {
 	return ev, ev == "" || eventIDRe.MatchString(ev)
 }
 
-// readBodyBounded reads the request body once, bounded to the same 16 KiB
-// the handlers enforce, and leaves it restorable for the handler underneath.
+// readBodyBounded reads the request body once, bounded to a 16 KiB+1 routing
+// window, and leaves it restorable for the handler underneath. An oversized
+// body is restored as its own truncated prefix so the handler's
+// MaxBytesReader still rejects it with the same 400 it always returned;
+// restoring nothing would make the handler see an empty body and reject the
+// signature with 401 instead of the size, which is the wrong denial.
 func readBodyBounded(r *http.Request) []byte {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 16385))
 	r.Body.Close()
-	if err != nil || len(body) > 16384 {
-		return nil // oversized or failed bodies fail in the handler's own check
+	if err != nil && len(body) == 0 {
+		return nil // a body that never produced bytes: the handler's read fails the same way
 	}
 	return body
 }

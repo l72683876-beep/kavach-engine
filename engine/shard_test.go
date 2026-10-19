@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -103,5 +104,32 @@ func TestProbeWriterReplay(t *testing.T) {
 	p.replay(w)
 	if w.Code != http.StatusConflict || !bytes.Contains(w.Body.Bytes(), []byte("expired")) || w.Header().Get("Retry-After") != "2" {
 		t.Fatalf("replay lost state: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// An oversized body must reach the handler still oversized: routing reads a
+// 16 KiB+1 window to find event_id and restores what it read, so the
+// handler's MaxBytesReader rejects it with the same 400 it always returned.
+// Restoring nothing made the handler see an empty body and fail the
+// signature with 401 instead of the size, which is the wrong denial.
+func TestOversizedBodySurvivesRouting(t *testing.T) {
+	big := bytes.Repeat([]byte("x"), 20000)
+	r := httptest.NewRequest(http.MethodPost, "/reserve", bytes.NewReader(big))
+	requestEventID(r, true) // routing consumed the body only to find event_id
+	restored, _ := io.ReadAll(r.Body)
+	if !bytes.Equal(restored, big[:16385]) {
+		t.Fatalf("oversized body not restored as its own prefix: got %d bytes, want 16385", len(restored))
+	}
+	mr := http.MaxBytesReader(httptest.NewRecorder(), io.NopCloser(bytes.NewReader(restored)), 16384)
+	if _, err := io.ReadAll(mr); err == nil {
+		t.Fatal("MaxBytesReader accepted a restored oversized body")
+	}
+	// a normal body must still round-trip byte for byte
+	small := []byte(`{"event_id":"concert-a","seats":[1]}`)
+	r2 := httptest.NewRequest(http.MethodPost, "/book", bytes.NewReader(small))
+	requestEventID(r2, true)
+	restored2, _ := io.ReadAll(r2.Body)
+	if !bytes.Equal(restored2, small) {
+		t.Fatalf("normal body corrupted by routing: %q", restored2)
 	}
 }
