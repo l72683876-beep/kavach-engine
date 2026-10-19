@@ -7,3 +7,5 @@ chaos.log
 __pycache__/
 engine/snap_*.jsonl*
 engine/snapshot-*.bin
+engine/*.jsonl
+engine/*.txt

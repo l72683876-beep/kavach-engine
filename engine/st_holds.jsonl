@@ -1,4 +1,0 @@
-{"booking_id":"","event":"reserved","expires_at":1792173772676388177,"reservation_id":"RSV00000001","seats":[3],"tenant":"tenant1","ts":1792173767676393625,"user":"cap"}
-{"booking_id":"","event":"reserved","expires_at":1792173772720010081,"reservation_id":"RSV00000002","seats":[7],"tenant":"tenant1","ts":1792173767720013382,"user":"t1"}
-{"booking_id":"","event":"reserved","expires_at":1792173772731871097,"reservation_id":"RSV00000003","seats":[8],"tenant":"tenant1","ts":1792173767731877593,"user":"race"}
-{"booking_id":"BK00000006","event":"confirmed","expires_at":1792173772731871097,"reservation_id":"RSV00000003","seats":[8],"tenant":"tenant1","ts":1792173767746402782,"user":"race"}

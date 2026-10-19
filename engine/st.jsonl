@@ -1,6 +1,0 @@
-{"booking_id":"BK00000001","key":"rt0","seats":[1],"tenant":"tenant1","ts":1792173767655616235,"user":"rt0"}
-{"booking_id":"BK00000002","key":"a7","seats":[2],"tenant":"tenant1","ts":1792173767669406643,"user":"x"}
-{"booking_id":"BK00000003","key":"uni1","seats":[4],"tenant":"tenant1","ts":1792173767698313653,"user":"uni-çafé-🙂"}
-{"booking_id":"BK00000004","key":"nul1","seats":[5],"tenant":"tenant1","ts":1792173767704276784,"user":"nul\u0000id"}
-{"booking_id":"BK00000005","key":"ik1","seats":[6],"tenant":"tenant1","ts":1792173767711015291,"user":"idem"}
-{"booking_id":"BK00000006","key":"","seats":[8],"tenant":"tenant1","ts":1792173767742032644,"user":"race"}
