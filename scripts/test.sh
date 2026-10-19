@@ -53,13 +53,14 @@ python3 sdk/test_sdks.py && ok "sdk python (11 checks)" || fail "sdk python"
 kill $E 2>/dev/null; wait $E 2>/dev/null
 
 if [ "${1:-}" = "--full" ]; then
-  step "Full extras (chaos, recovery, cluster)"
+  step "Full extras (chaos, recovery, cluster, crash)"
   # the sim scripts Popen with cwd="engine" themselves, so run them from the repo root
   python3 sim/chaos_test.py 8091    && ok "chaos"    || fail "chaos"
   python3 sim/recovery_test.py 8090 && ok "recovery" || fail "recovery"
   python3 sim/snapshot_test.py 8096 && ok "snapshot + compaction" || fail "snapshot + compaction"
   python3 sim/cluster_test.py 8101  && ok "cluster"  || fail "cluster"
   python3 sim/replication_test.py 8111 && ok "replication e2e" || fail "replication e2e"
+  python3 sim/crash_test.py 8123    && ok "crash (SIGKILL mid-write)" || fail "crash (SIGKILL mid-write)"
 fi
 
 echo; echo "================ RESULT ================"
