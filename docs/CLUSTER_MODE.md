@@ -100,3 +100,37 @@ always the same: after any sequence of failures, a seat is never sold twice.
 Rough shape: phases 1-2 are where the real hard lines live (replication protocol,
 election, epoch checks in the write path, roughly 1.5-2k lines); 3-4 are thin; 5 is the
 part reviewers will actually run.
+
+## Multi-shard in one process (phase 2b)
+
+`-shards N` hosts N independent inventories in one process. A request names
+its event with an `event_id` JSON body field (POSTs) or an `event` query
+parameter (GETs); a stable FNV-1a hash of that key picks the shard. Every
+operation on one event still runs on exactly one writer, which is the same
+single-writer guarantee as before, just per event instead of per process.
+
+- **Isolation.** Each shard has its own seat map, hold store, waitlist,
+  bookings and holds WAL, snapshot directory and worker pool, under
+  `<state>/shard-00/` ... `-NN/`. One event selling out never touches
+  another; a SIGKILL restart replays every shard's WAL independently.
+- **Shared on purpose.** Auth, the idempotency store, and the per-tenant and
+  per-IP rate-limit budgets are process-wide: splitting those would let a
+  client buy four rate limits by writing four event ids. `/status` answers
+  from the shared store directly.
+- **Backward compatible.** `-shards` defaults to 1, which is byte-for-byte
+  today's engine: same log paths, same response shapes, same idempotency
+  behavior. Omitting `event_id` routes to the synthetic `default` event.
+- **Id-keyed endpoints scan.** A reservation id alone does not name its
+  shard, so `/confirm`, `/release`, `/reservation` and `/waitlist/cancel`
+  try the shard the request names (if any), then every shard, replaying the
+  first answer that is not `not_found`. Only the shard holding the id does
+  any work; probe requests skip the received counter and the IP limiter so
+  one client request still counts once.
+- **Metrics.** One shard returns the familiar shape; several return the
+  counters summed across shards plus a per-shard breakdown. Latency
+  percentiles are per shard, because percentiles do not sum.
+- **Limits, stated plainly.** Multi-shard is single-node in this phase and
+  refuses to combine with `-peers` or `-replicate-*`: per-shard replication
+  (each shard a member of its own cluster) is the next milestone, not a
+  promise. Ids reserve a disjoint 10M range per shard, so BK/RSV ids never
+  collide across shards; a shard caps at 64.
