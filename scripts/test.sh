@@ -59,6 +59,7 @@ if [ "${1:-}" = "--full" ]; then
   python3 sim/recovery_test.py 8090 && ok "recovery" || fail "recovery"
   python3 sim/snapshot_test.py 8096 && ok "snapshot + compaction" || fail "snapshot + compaction"
   python3 sim/cluster_test.py 8101  && ok "cluster"  || fail "cluster"
+  python3 sim/replication_test.py 8111 && ok "replication e2e" || fail "replication e2e"
 fi
 
 echo; echo "================ RESULT ================"

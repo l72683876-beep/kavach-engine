@@ -342,6 +342,11 @@ func (e *Engine) handleReplicate(w http.ResponseWriter, r *http.Request) {
 // node's OWN log files (durable WAL of its own), and a single applier
 // goroutine replays new tail bytes through the shared apply path.
 func (e *Engine) runFollower() {
+	// apply positions start at the end of our own WAL: recovery has already
+	// replayed every byte on disk, so the applier must resume after them,
+	// never re-read from zero (a restart would double-apply the whole log)
+	e.replBookPos = fileSize(e.bookGC.path)
+	e.replHoldPos = fileSize(e.holdGC.path)
 	for _, logName := range []string{"bookings", "holds"} {
 		go e.followOne(logName)
 	}
