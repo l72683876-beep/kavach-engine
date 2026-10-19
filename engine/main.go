@@ -23,6 +23,7 @@
 package main
 
 import (
+	"context"
 	"bufio"
 	"bytes"
 	"crypto/hmac"
@@ -36,6 +37,9 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -910,6 +914,7 @@ type Engine struct {
 	webhookURL string
 	webhookCh  chan map[string]interface{}
 	chaosStallMs int
+	tracer        trace.Tracer // OpenTelemetry spans per request (nil = tracing off)
 	chaosProb    float64
 	chaosPanic   float64
 
@@ -1823,6 +1828,8 @@ func main() {
 	chaosStallMs := flag.Int("chaos-stall-ms", 0, "chaos: inject random worker stalls up to this many ms (0 = off)")
 	chaosProb := flag.Float64("chaos-prob", 0, "chaos: probability a request hits a stall")
 	chaosPanic := flag.Float64("chaos-panic", 0, "chaos: probability a worker panics (contained; the engine survives)")
+	otelEndpoint := flag.String("otel-endpoint", "", "OpenTelemetry: OTLP/HTTP endpoint to export request spans to, e.g. http://localhost:4318 (empty = tracing off)")
+	otelRatio := flag.Float64("otel-ratio", 1, "OpenTelemetry: trace sample ratio 0..1 (1 = trace every request)")
 	apiKeys := flag.String("api-keys", "", "API keys as key:tenant,key:tenant (empty = local mode, auth off)")
 	secret := flag.String("hmac-secret", "", "HMAC secret; when set, requests must be signed (X-Kavach-Timestamp, X-Kavach-Request-Id, X-Kavach-Signature over timestamp\\nrequest-id\\nmethod\\nuri\\napi-key\\nbody; the api key is part of the MAC in both modes)")
 	tenantSecrets := flag.String("hmac-secrets", "", "per-tenant HMAC secrets as tenant:secret,...; verifies each request against ITS tenant's secret (overrides -hmac-secret; tenants without an entry are rejected)")
@@ -2033,5 +2040,14 @@ func main() {
 		mode = "authenticated"
 	}
 	log.Printf("kavach engine on %s: %d seats (slice offset %d), %d workers, %d CPUs, hold-ttl=%ds, mode=%s, peers=%d", *addr, *seats, offset, *workers, runtime.NumCPU(), *holdTTL, mode, len(peers))
-	log.Fatal(http.ListenAndServe(*addr, nil))
+	shutdownTracing, terr := setupTracing(*otelEndpoint, *otelRatio)
+	if terr != nil {
+		log.Printf("kavach: otel tracing disabled (%v)", terr)
+	}
+	if shutdownTracing != nil {
+		e.tracer = otel.Tracer("kavach")
+		defer shutdownTracing(context.Background())
+		log.Printf("kavach: otel tracing on, endpoint %s, sample ratio %.2f", *otelEndpoint, *otelRatio)
+	}
+	log.Fatal(http.ListenAndServe(*addr, e.tracingMiddleware(http.DefaultServeMux)))
 }
