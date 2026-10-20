@@ -98,6 +98,14 @@ for i in range(250):
         break
 check("cluster drained through a single entry node", drained and sold_now == 199, f"sold_now={sold_now}")
 
+# regression: once EVERY slice is gone, a new book must come back sold_out fast,
+# not loop the ring and wedge the workers (ring-loop guard, X-Kavach-Forwarded-By)
+t0 = time.time()
+st, d = req(0, "POST", "/book", {"user_id": "bx", "idempotency_key": "bkx", "seats": 1})
+dt = time.time() - t0
+check("book on fully-sold cluster returns sold_out, no ring loop",
+      d.get("status") == "sold_out" and dt < 3, f"st={st} {d} {dt:.1f}s")
+
 st, s = req(1, "GET", "/seats")
 check("cluster sold exactly 200, held 100, free 0",
       s.get("sold") == 200 and s.get("held") == 100 and s.get("free") == 0, s)

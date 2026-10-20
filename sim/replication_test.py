@@ -52,18 +52,17 @@ def wait_converged(want_sold, limit=12.0):
         time.sleep(0.3)
     return False, last
 
-for n in ["L", "F"]:
-    for suf in ["bookings", "holds"]:
-        import glob as _glob
+import glob as _glob
 for _f in _glob.glob("engine/snapshot-*.bin") + _glob.glob("engine/*.snap-*"):
     try:
         os.remove(_f)
     except OSError:
         pass
 
-for f in [f"repl_{n}_{suf}.jsonl"]:
-            try: os.remove("engine/" + f)
-            except FileNotFoundError: pass
+for n in ["L", "F"]:
+    for suf in ["bookings", "holds"]:
+        try: os.remove(f"engine/repl_{n}_{suf}.jsonl")
+        except FileNotFoundError: pass
 
 leader = start(L, "L", [])
 follower = start(F, "F", ["-replicate-from", f"http://127.0.0.1:{L}"])

@@ -1328,6 +1328,21 @@ func (e *Engine) forwardFor(r *http.Request, path, method string, rawBody []byte
 	if len(e.peers) <= 1 {
 		return 0, nil, false
 	}
+	// Ring-loop guard: the request carries the list of nodes that already
+	// tried it. If it comes back to a node that already saw it, the ring is
+	// exhausted: serve this node's own local result instead of looping
+	// forever (a fully-sold cluster once wedged every worker this way).
+	self := fmt.Sprintf("node%d", e.selfIdx)
+	visited := false
+	for _, part := range strings.Split(r.Header.Get("X-Kavach-Forwarded-By"), ",") {
+		if part == self {
+			visited = true
+			break
+		}
+	}
+	if visited {
+		return 0, nil, false
+	}
 	for k := 1; k < len(e.peers); k++ {
 		peer := e.peers[(e.selfIdx+k)%len(e.peers)]
 		u := "http://" + peer + path
@@ -1350,7 +1365,11 @@ func (e *Engine) forwardFor(r *http.Request, path, method string, rawBody []byte
 				req.Header.Set(h, v)
 			}
 		}
-		req.Header.Set("X-Kavach-Forwarded-By", fmt.Sprintf("node%d", e.selfIdx))
+		if seen := r.Header.Get("X-Kavach-Forwarded-By"); seen != "" {
+			req.Header.Set("X-Kavach-Forwarded-By", seen+","+self)
+		} else {
+			req.Header.Set("X-Kavach-Forwarded-By", self)
+		}
 		resp, err := e.httpc.Do(req)
 		if err != nil {
 			continue // peer down: try the next one in the ring
