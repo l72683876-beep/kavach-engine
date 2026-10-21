@@ -79,10 +79,16 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 	bid, rid, waitlistSeq *uint64) (bookings, reservations, queued int) {
 
 	idNum := func(id string) uint64 {
-		if len(id) > 2 {
-			if n, err := strconv.Atoi(id[2:]); err == nil {
-				return uint64(n)
-			}
+		// strip the whole alphabetic prefix, not a fixed 2 chars: BK is 2
+		// but RSV is 3, and "RSV00000007"[2:] is "V00000007", which Atoi
+		// rejects, silently zeroing every reservation id on replay (the
+		// counter then restarts at 1 and collides with restored ids).
+		i := 0
+		for i < len(id) && (id[i] < '0' || id[i] > '9') {
+			i++
+		}
+		if n, err := strconv.Atoi(id[i:]); err == nil {
+			return uint64(n)
 		}
 		return 0
 	}
