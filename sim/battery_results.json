@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=4 ids=1"
+   "detail": "confirmed=5 ids=1"
   },
   {
    "cat": "race",
@@ -400,7 +400,7 @@
    "cat": "state",
    "name": "double release: idempotent, seats freed exactly once",
    "ok": true,
-   "detail": "200/200 free 30->31->31"
+   "detail": "200/200 free 25->26->26"
   },
   {
    "cat": "state",
@@ -412,13 +412,13 @@
    "cat": "state",
    "name": "hold TTL expiry: confirm rejected, seats returned",
    "ok": true,
-   "detail": "409 free 28->32"
+   "detail": "409 free 8->10"
   },
   {
    "cat": "race",
    "name": "HEAVY: 100 parallel for the LAST seat: exactly one winner, zero oversell",
    "ok": true,
-   "detail": "winners=1"
+   "detail": "winners=1 statuses={200: 100} seats={'free': 0, 'held': 0, 'sold': 61, 'total': 61}"
   },
   {
    "cat": "abuse",
@@ -436,7 +436,7 @@
    "cat": "state",
    "name": "final invariant: total == sold + held + free",
    "ok": true,
-   "detail": "{'free': 32, 'held': 0, 'sold': 18, 'total': 50}"
+   "detail": "{'free': 25, 'held': 7, 'sold': 18, 'total': 50}"
   },
   {
    "cat": "app",
@@ -448,7 +448,7 @@
    "cat": "app",
    "name": "/api/seats board matches engine",
    "ok": true,
-   "detail": "{'free': 32, 'held': 0, 'sold': 18, 'total': 50}"
+   "detail": "{'free': 30, 'held': 2, 'sold': 18, 'total': 50}"
   },
   {
    "cat": "app",
@@ -460,7 +460,7 @@
    "cat": "app",
    "name": "hold->pay->booking happy path",
    "ok": true,
-   "detail": "{'booking_id': 'BK00000018', 'ok': True, 'seats': [32]}"
+   "detail": "{'booking_id': 'BK00000018', 'ok': True, 'seats': [30]}"
   },
   {
    "cat": "app",
