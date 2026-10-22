@@ -149,6 +149,9 @@ missing = []
 def probe(key_rid):
     key, rid = key_rid
     st, d = req("GET", f"/reservation?id={rid}")
+    if st == 0:  # transient connection error under load: retry once before calling it lost
+        time.sleep(0.3)
+        st, d = req("GET", f"/reservation?id={rid}")
     return key if (st != 200 or d.get("status") != "held") else None
 # concurrent: the scan must finish inside the hold TTL, serially it cannot
 with ThreadPoolExecutor(20) as ex:
