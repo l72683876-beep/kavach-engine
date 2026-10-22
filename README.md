@@ -108,6 +108,27 @@ curl http://localhost:8080/metrics
 That is the "two lines" promise: point your app at `/book`, send a user id and an
 idempotency key, and Kavach handles the stampede behind it.
 
+## One file instead of 20 flags (KCL)
+
+A flash sale described in plain text, not in a wall of CLI flags:
+
+```kcl
+# diwali-drop.kcl
+sale "Diwali drop 2026"
+seats 5000
+hold-ttl 5m
+rate-limit user 2/s burst 5
+rate-limit ip 20/s burst 40
+```
+
+```bash
+go run ./engine -config examples/diwali-drop.kcl
+```
+
+One statement per line, `#` comments, real units (`5m`, `50ms`, `20/s`), and
+mistakes reported with line numbers before the engine starts. CLI flags you
+type explicitly still override the file. Full spec: [docs/KCL.md](docs/KCL.md).
+
 ## Security mode (v1.5)
 
 Local mode (no keys) stays the two-minute default above. For anything exposed to a network:

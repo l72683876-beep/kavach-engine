@@ -23,15 +23,16 @@
 package main
 
 import (
-	"context"
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	kavachkcl "github.com/l72683876-beep/kavach-engine/kcl"
 	"io"
 	"log"
 	"math/rand"
@@ -168,7 +169,6 @@ func (inv *Inventory) freeHeld(seats []int) {
 func (inv *Inventory) stats() (total, sold, held int) {
 	return len(inv.seats), int(atomic.LoadInt64(&inv.sold)), int(atomic.LoadInt64(&inv.held))
 }
-
 
 // peerSliceSeats asks a peer how many seats its own slice holds, retrying
 // briefly because a cluster's nodes may still be booting. Cluster-mode peers
@@ -566,7 +566,7 @@ type WaitEntry struct {
 	User     string
 	Seats    int
 	Event    string // the event the join named; a different event on the same key is a conflict
-	pos      int // filled in by listFor
+	pos      int    // filled in by listFor
 	QueuedAt time.Time
 }
 
@@ -943,75 +943,75 @@ type job struct {
 }
 
 type Engine struct {
-	inv      *Inventory
-	userLim  *Limiter
-	ipLim    *Limiter
-	auth     *Auth
-	idem     *IdemStore
-	res      *ReservationStore
-	queue    chan *job
-	bookGC *GroupCommit
-	holdGC *GroupCommit
-	bid      uint64
-	rid      uint64
-	inFlight int64
-	holdTTL    time.Duration
-	wl         *Waitlist
-	waitCap    int
-	webhookURL string
-	webhookCh  chan map[string]interface{}
+	inv          *Inventory
+	userLim      *Limiter
+	ipLim        *Limiter
+	auth         *Auth
+	idem         *IdemStore
+	res          *ReservationStore
+	queue        chan *job
+	bookGC       *GroupCommit
+	holdGC       *GroupCommit
+	bid          uint64
+	rid          uint64
+	inFlight     int64
+	holdTTL      time.Duration
+	wl           *Waitlist
+	waitCap      int
+	webhookURL   string
+	webhookCh    chan map[string]interface{}
 	chaosStallMs int
-	tracer        trace.Tracer // OpenTelemetry spans per request (nil = tracing off)
+	tracer       trace.Tracer // OpenTelemetry spans per request (nil = tracing off)
 	chaosProb    float64
 	chaosPanic   float64
 
 	// replication (cluster phase 1): a follower tails the leader's WAL and
 	// applies it through the shared replay path; a leader serves it.
-	replKey      string
-	replSecret   []byte
-	replFrom     string
-	replStreams  int64
+	replKey         string
+	replSecret      []byte
+	replFrom        string
+	replStreams     int64
 	replicatedLines int64
 	replConnected   int32
 	replPromoted    int32 // 1 = this follower was promoted and now serves writes
-	replBookPos  int64 // local WAL bytes already applied (bookings)
-	replHoldPos  int64 // local WAL bytes already applied (holds)
-	replNonces   map[string]int64
-	replNonceMu  sync.Mutex
+	replBookPos     int64 // local WAL bytes already applied (bookings)
+	replHoldPos     int64 // local WAL bytes already applied (holds)
+	replNonces      map[string]int64
+	replNonceMu     sync.Mutex
 
 	// snapshot machinery: freeze gates every state mutation, so the
 	// snapshotter can copy exact instant state without racing writers.
-	freeze          sync.RWMutex
-	snapEvery       int
-	snapInterval    time.Duration
-	snapDir         string
-	snapMu          sync.Mutex
-	snapSeq         uint64
-	snapTotal       int64
-	lastSnapAt      int64
-	eventsSince     int64
-	recoveryLines   int64
-	peers        []string
-	selfIdx      int
-	httpc        *http.Client
-	pgShipped    int64
-	pgFailed     int64
+	freeze        sync.RWMutex
+	snapEvery     int
+	snapInterval  time.Duration
+	snapDir       string
+	snapMu        sync.Mutex
+	snapSeq       uint64
+	snapTotal     int64
+	lastSnapAt    int64
+	eventsSince   int64
+	recoveryLines int64
+	peers         []string
+	selfIdx       int
+	httpc         *http.Client
+	pgShipped     int64
+	pgFailed      int64
 
-	received     int64
-	ipLimited    int64
-	userLimited  int64
-	overloaded   int64
-	authFailures int64
-	replays      int64
-	conflicts    int64
-	confirmed    int64
-	soldOut      int64
-	errors       int64
-	holdsCreated int64
-	holdsConfirm int64
-	holdsRelease int64
-	holdsExpired int64
-	waitQueued   int64
+	received      int64
+	ipLimited     int64
+	userLimited   int64
+	overloaded    int64
+	authFailures  int64
+	replays       int64
+	conflicts     int64
+	confirmed     int64
+	soldOut       int64
+	errors        int64
+	holdsCreated  int64
+	holdsConfirm  int64
+	holdsRelease  int64
+	holdsExpired  int64
+	waitQueued    int64
 	waitFulfilled int64
 	waitCancelled int64
 	webhookSent   int64
@@ -1019,8 +1019,8 @@ type Engine struct {
 	chaosStalls   int64
 	chaosPanics   int64
 	forwarded     int64
-	lat          *LatencyRing
-	started      time.Time
+	lat           *LatencyRing
+	started       time.Time
 }
 
 // appendLog writes, flushes, and fsyncs the booking BEFORE the caller may
@@ -1776,7 +1776,6 @@ func (e *Engine) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
 }
 
-
 // handleSeatsState serves the live per-seat state map as one compact string:
 // index i is global seat i (minus the node's offset in cluster mode),
 // characters '0' free, '1' held, '2' sold. Read-only and additive; the
@@ -1845,42 +1844,42 @@ func (e *Engine) handleMetrics(w http.ResponseWriter, r *http.Request) {
 func (e *Engine) metricsMap() map[string]interface{} {
 	count, p50, p95, p99 := e.lat.snapshot()
 	return map[string]interface{}{
-		"received":          atomic.LoadInt64(&e.received),
-		"rate_limited":      atomic.LoadInt64(&e.userLimited) + atomic.LoadInt64(&e.ipLimited),
-		"ip_rate_limited":   atomic.LoadInt64(&e.ipLimited),
-		"user_rate_limited": atomic.LoadInt64(&e.userLimited),
-		"auth_failures":     atomic.LoadInt64(&e.authFailures),
-		"replays_rejected":  atomic.LoadInt64(&e.replays),
-		"idem_conflicts":    atomic.LoadInt64(&e.conflicts),
-		"overloaded":        atomic.LoadInt64(&e.overloaded),
-		"in_flight":         atomic.LoadInt64(&e.inFlight),
-		"confirmed":         atomic.LoadInt64(&e.confirmed),
-		"sold_out":          atomic.LoadInt64(&e.soldOut),
-		"errors":            atomic.LoadInt64(&e.errors),
-		"holds_created":     atomic.LoadInt64(&e.holdsCreated),
-		"holds_confirmed":   atomic.LoadInt64(&e.holdsConfirm),
-		"holds_released":    atomic.LoadInt64(&e.holdsRelease),
-		"holds_expired":     atomic.LoadInt64(&e.holdsExpired),
-		"waitlist_queued":     atomic.LoadInt64(&e.waitQueued),
-		"waitlist_fulfilled":  atomic.LoadInt64(&e.waitFulfilled),
-		"waitlist_cancelled":  atomic.LoadInt64(&e.waitCancelled),
-		"webhook_sent":        atomic.LoadInt64(&e.webhookSent),
-		"webhook_failed":      atomic.LoadInt64(&e.webhookFailed),
-		"forwarded":           atomic.LoadInt64(&e.forwarded),
-		"replication_streams":    atomic.LoadInt64(&e.replStreams),
-		"replicated_lines":       atomic.LoadInt64(&e.replicatedLines),
-		"replication_connected":  int(atomic.LoadInt32(&e.replConnected)),
+		"received":              atomic.LoadInt64(&e.received),
+		"rate_limited":          atomic.LoadInt64(&e.userLimited) + atomic.LoadInt64(&e.ipLimited),
+		"ip_rate_limited":       atomic.LoadInt64(&e.ipLimited),
+		"user_rate_limited":     atomic.LoadInt64(&e.userLimited),
+		"auth_failures":         atomic.LoadInt64(&e.authFailures),
+		"replays_rejected":      atomic.LoadInt64(&e.replays),
+		"idem_conflicts":        atomic.LoadInt64(&e.conflicts),
+		"overloaded":            atomic.LoadInt64(&e.overloaded),
+		"in_flight":             atomic.LoadInt64(&e.inFlight),
+		"confirmed":             atomic.LoadInt64(&e.confirmed),
+		"sold_out":              atomic.LoadInt64(&e.soldOut),
+		"errors":                atomic.LoadInt64(&e.errors),
+		"holds_created":         atomic.LoadInt64(&e.holdsCreated),
+		"holds_confirmed":       atomic.LoadInt64(&e.holdsConfirm),
+		"holds_released":        atomic.LoadInt64(&e.holdsRelease),
+		"holds_expired":         atomic.LoadInt64(&e.holdsExpired),
+		"waitlist_queued":       atomic.LoadInt64(&e.waitQueued),
+		"waitlist_fulfilled":    atomic.LoadInt64(&e.waitFulfilled),
+		"waitlist_cancelled":    atomic.LoadInt64(&e.waitCancelled),
+		"webhook_sent":          atomic.LoadInt64(&e.webhookSent),
+		"webhook_failed":        atomic.LoadInt64(&e.webhookFailed),
+		"forwarded":             atomic.LoadInt64(&e.forwarded),
+		"replication_streams":   atomic.LoadInt64(&e.replStreams),
+		"replicated_lines":      atomic.LoadInt64(&e.replicatedLines),
+		"replication_connected": int(atomic.LoadInt32(&e.replConnected)),
 		"role": func() string {
 			if e.replFrom == "" || atomic.LoadInt32(&e.replPromoted) == 1 {
 				return "leader"
 			}
 			return "follower"
 		}(),
-		"pg_shipped":          atomic.LoadInt64(&e.pgShipped),
-		"pg_failed":           atomic.LoadInt64(&e.pgFailed),
-		"chaos_stalls":        atomic.LoadInt64(&e.chaosStalls),
-		"chaos_panics":        atomic.LoadInt64(&e.chaosPanics),
-		"snapshots_total":     atomic.LoadInt64(&e.snapTotal),
+		"pg_shipped":      atomic.LoadInt64(&e.pgShipped),
+		"pg_failed":       atomic.LoadInt64(&e.pgFailed),
+		"chaos_stalls":    atomic.LoadInt64(&e.chaosStalls),
+		"chaos_panics":    atomic.LoadInt64(&e.chaosPanics),
+		"snapshots_total": atomic.LoadInt64(&e.snapTotal),
 		"last_snapshot_age_seconds": func() float64 {
 			ls := atomic.LoadInt64(&e.lastSnapAt)
 			if ls == 0 {
@@ -1889,8 +1888,8 @@ func (e *Engine) metricsMap() map[string]interface{} {
 			return time.Since(time.Unix(0, ls)).Seconds()
 		}(),
 		"recovery_replayed_lines": atomic.LoadInt64(&e.recoveryLines),
-		"latency_ms":        map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
-		"uptime_seconds":    time.Since(e.started).Seconds(),
+		"latency_ms":              map[string]interface{}{"p50": p50, "p95": p95, "p99": p99, "samples": count},
+		"uptime_seconds":          time.Since(e.started).Seconds(),
 	}
 }
 
@@ -1924,7 +1923,46 @@ func main() {
 	snapshotInterval := flag.Int("snapshot-interval", 0, "WAL snapshots: also snapshot after this many seconds with new events (0 = off; -snapshot-every alone also works)")
 	ipRate := flag.Float64("ip-rate", 20, "per-IP requests/second (0 disables)")
 	ipBurst := flag.Float64("ip-burst", 40, "per-IP burst")
+	cfgPath := flag.String("config", "", "path to a Kavach config file (.kcl) to describe the sale; explicit CLI flags override it")
 	flag.Parse()
+
+	if *cfgPath != "" {
+		cfg, err := kavachkcl.ParseFile(*cfgPath)
+		if err != nil {
+			log.Fatalf("config file %s:\n%s", *cfgPath, err)
+		}
+		cliSet := map[string]bool{}
+		flag.Visit(func(f *flag.Flag) { cliSet[f.Name] = true })
+		apply := func(name string, fn func()) {
+			if !cliSet[name] && cfg.Set[name] {
+				fn()
+			}
+		}
+		apply("seats", func() { *seats = cfg.Seats })
+		apply("addr", func() { *addr = cfg.Addr })
+		apply("workers", func() { *workers = cfg.Workers })
+		apply("log", func() { *logPath = cfg.LogPath })
+		apply("holds-log", func() { *holdsLog = cfg.HoldsLogPath })
+		apply("hold-ttl", func() { *holdTTL = cfg.HoldTTLSeconds })
+		apply("waitlist-cap", func() { *waitCap = cfg.WaitlistCap })
+		apply("webhook-url", func() { *webhookURL = cfg.WebhookURL })
+		apply("peers", func() { *peersSpec = cfg.PeersSpec })
+		apply("pg-dsn", func() { *pgDSN = cfg.PGDSN })
+		apply("node-id", func() { *nodeID = cfg.NodeID })
+		apply("chaos-stall-ms", func() { *chaosStallMs = cfg.ChaosStallMs })
+		apply("chaos-prob", func() { *chaosProb = cfg.ChaosProb })
+		apply("api-keys", func() { *apiKeys = cfg.APIKeys })
+		apply("hmac-secret", func() { *secret = cfg.HMACSecret })
+		apply("user-rate", func() { *userRate = cfg.UserRate })
+		apply("user-burst", func() { *userBurst = cfg.UserBurst })
+		apply("ip-rate", func() { *ipRate = cfg.IPRate })
+		apply("ip-burst", func() { *ipBurst = cfg.IPBurst })
+		if cfg.SaleLabel != "" {
+			log.Printf("loaded config %s: %s", *cfgPath, cfg.SaleLabel)
+		} else {
+			log.Printf("loaded config %s", *cfgPath)
+		}
+	}
 
 	var peers []string
 	selfIdx := 0
@@ -2007,27 +2045,27 @@ func main() {
 			shardOffset = offset // the real per-peer slice offset computed above
 		}
 		e := &Engine{
-			inv:      NewInventory(*seats, shardOffset),
-			userLim:  userLim,
-			ipLim:    ipLim,
-			auth:     auth,
-			idem:     idem,
-			res:      NewReservationStore(),
-			queue:    make(chan *job, 100000),
-			lat:      NewLatencyRing(1000000),
-			holdTTL:  time.Duration(*holdTTL) * time.Second,
-			wl:       NewWaitlist(),
-			waitCap:    *waitCap,
-			webhookURL: *webhookURL,
-			webhookCh:  make(chan map[string]interface{}, 10000),
-			replNonces: make(map[string]int64),
+			inv:          NewInventory(*seats, shardOffset),
+			userLim:      userLim,
+			ipLim:        ipLim,
+			auth:         auth,
+			idem:         idem,
+			res:          NewReservationStore(),
+			queue:        make(chan *job, 100000),
+			lat:          NewLatencyRing(1000000),
+			holdTTL:      time.Duration(*holdTTL) * time.Second,
+			wl:           NewWaitlist(),
+			waitCap:      *waitCap,
+			webhookURL:   *webhookURL,
+			webhookCh:    make(chan map[string]interface{}, 10000),
+			replNonces:   make(map[string]int64),
 			chaosStallMs: *chaosStallMs,
 			chaosProb:    *chaosProb,
 			chaosPanic:   *chaosPanic,
 			peers:        peers,
 			selfIdx:      selfIdx,
 			httpc:        &http.Client{Timeout: 5 * time.Second},
-			started:  time.Now(),
+			started:      time.Now(),
 			snapEvery:    *snapshotEvery,
 			snapInterval: time.Duration(*snapshotInterval) * time.Second,
 			snapDir:      snapDir,

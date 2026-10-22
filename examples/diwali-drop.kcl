@@ -1,0 +1,30 @@
+# diwali-drop.kcl - describe one flash sale in one small file.
+# Run it:   go run ./engine -config examples/diwali-drop.kcl
+
+sale "Diwali drop 2026"
+
+# inventory and capacity
+seats 5000
+workers 16
+listen :8080
+
+# reservation behaviour: a seat held for checkout comes back after 5 minutes
+hold-ttl 5m
+
+# sold out? the waitlist catches demand instead of dropping it
+waitlist-cap 100000
+
+# rate limits: 2 requests/second per user (burst 5), 20/s per IP (burst 40)
+rate-limit user 2/s burst 5
+rate-limit ip 20/s burst 40
+
+# multi-node cluster: every node must be listed, including this one
+# node n1
+# peers :8081,:8082
+
+# durable Postgres write-behind (build with: go build -tags postgres)
+# postgres postgres://user@host:5432/kavach
+
+# chaos testing: knock the engine around before opening day
+# chaos-stall 50ms
+# chaos-prob 0.01
