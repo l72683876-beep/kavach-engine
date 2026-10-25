@@ -92,8 +92,12 @@ def seats_state():
 def hold():
     """Reserve seats through Kavach; the app keeps its own order record."""
     b = request.get_json(silent=True) or {}
+    n = b.get("seats", 1)
+    if isinstance(n, bool) or not isinstance(n, int):
+        # reject strings/floats: int("2") and int(1.5) would silently coerce
+        return jsonify({"ok": False, "status": "bad_request"}), 400
     try:
-        n = int(b.get("seats", 1))
+        n = int(n)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "status": "bad_request"}), 400
     user = b.get("user_id")
