@@ -1401,6 +1401,13 @@ func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
 		return "", nil, false
 	}
+	// declared Content-Length must match the bytes actually received; a short
+	// body behind a half-close is a framing desync risk, so fail closed
+	if r.ContentLength >= 0 && int64(len(body)) != r.ContentLength {
+		atomic.AddInt64(&e.errors, 1)
+		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+		return "", nil, false
+	}
 	tenant, st, msg := e.auth.verify(r, body)
 	if st != 0 {
 		if msg == "replay" {

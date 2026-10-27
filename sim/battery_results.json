@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=3 ids=1"
+   "detail": "confirmed=5 ids=1"
   },
   {
    "cat": "race",
