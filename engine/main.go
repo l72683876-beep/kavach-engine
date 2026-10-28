@@ -992,6 +992,7 @@ type Engine struct {
 	eventsSince   int64
 	recoveryLines int64
 	peers         []string
+	peerHosts     map[string]bool // hosts of configured cluster peers: the only origins allowed to claim the forwarded limiter skip
 	selfIdx       int
 	httpc         *http.Client
 	pgShipped     int64
@@ -1309,6 +1310,21 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// fromPeer reports whether this request arrived over a connection from a
+// configured cluster peer host. Only such origins may claim the forwarded
+// limiter skip: the header is client-writable, so a direct caller setting
+// X-Kavach-Forwarded-By must still pass the IP rate limit.
+func (e *Engine) fromPeer(r *http.Request) bool {
+	if len(e.peerHosts) == 0 {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	return e.peerHosts[host]
+}
+
 func (e *Engine) clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -1427,8 +1443,11 @@ func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{
 		return "", nil, false
 	}
 	// cluster peers forward through the limiter on purpose: the caller was
-	// already limited at the edge node; everything else is still checked
-	if r.Header.Get("X-Kavach-Forwarded-By") == "" && r.Header.Get("X-Kavach-Shard-Probe") == "" && !e.ipLim.Allow(e.clientIP(r)) {
+	// already limited at the edge node. The forwarded claim is honored only
+	// from a configured peer's connection; a client-set header never skips
+	// the check. Shard probes are set in-process after the wrappers strip
+	// any client-set value, so they stay header-gated.
+	if skip := (r.Header.Get("X-Kavach-Forwarded-By") != "" && e.fromPeer(r)) || r.Header.Get("X-Kavach-Shard-Probe") != ""; !skip && !e.ipLim.Allow(e.clientIP(r)) {
 		atomic.AddInt64(&e.ipLimited, 1)
 		w.Header().Set("Retry-After", "2")
 		writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
@@ -1996,6 +2015,19 @@ func main() {
 			log.Fatalf("this node's addr %s is not in -peers", *addr)
 		}
 	}
+	// Peer hosts are the only origins allowed to claim the forwarded
+	// limiter skip: X-Kavach-Forwarded-By is client-writable, so a direct
+	// caller must never bypass the IP rate limit by setting it.
+	peerHosts := map[string]bool{}
+	if len(peers) > 1 {
+		for _, p := range peers {
+			if host, _, err := net.SplitHostPort(p); err == nil {
+				peerHosts[host] = true
+			} else {
+				peerHosts[strings.TrimPrefix(p, ":")] = true
+			}
+		}
+	}
 	offset := 0
 	if len(peers) > 1 && selfIdx > 0 {
 		// This node owns seats [offset, offset+seats): the offset is the sum
@@ -2070,6 +2102,7 @@ func main() {
 			chaosProb:    *chaosProb,
 			chaosPanic:   *chaosPanic,
 			peers:        peers,
+			peerHosts:    peerHosts,
 			selfIdx:      selfIdx,
 			httpc:        &http.Client{Timeout: 5 * time.Second},
 			started:      time.Now(),
