@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=3 ids=1"
+   "detail": "confirmed=5 ids=1"
   },
   {
    "cat": "race",
@@ -731,6 +731,78 @@
    "name": "1MB webhook payload: no 500, app alive",
    "ok": true,
    "detail": "status=200"
+  },
+  {
+   "cat": "state",
+   "name": "same idem key, reordered JSON keys: idempotent, exactly one sale",
+   "ok": true,
+   "detail": "r1=200 r2=200 {'status': 'confirmed', 'seats': [29], 'booking_id sold 21->22"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as 2.0 (integral float) and as object: no 5xx, object rejected",
+   "ok": true,
+   "detail": "float=400/{'status': 'bad_request'} obj=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idem key with combining + fullwidth unicode: no 5xx, engine alive",
+   "ok": true,
+   "detail": "codes=[200, 200]"
+  },
+  {
+   "cat": "state",
+   "name": "multi-hold confirm-all: skipped (insufficient free)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "app",
+   "name": "parallel app pay-failure storm: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "hold=200 {'ok': False, 'status': 'sold_out'}"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with wrong JSON types: no 500, app alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold seats=1e3 (scientific notation): no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "over-send body (declared 200, sent 57, then FIN): no hold created, engine alive",
+   "ok": true,
+   "detail": "held 28->28"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/0.9-style request (no version): engine survives, next valid request 404",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "200 junk headers + valid signed request: answered, no smuggling, engine alive",
+   "ok": true,
+   "detail": "resp=b'HTTP/1.1 404 Not Found\\r\\nContent-Type: ap'"
+  },
+  {
+   "cat": "wl",
+   "name": "waitlist join with 10KB user_id: no 5xx, conserved, cancelled clean",
+   "ok": true,
+   "detail": "join=200 cancel=done"
+  },
+  {
+   "cat": "app",
+   "name": "app pay vs engine release race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "hold=200 {'ok': False, 'status': 'sold_out'}"
   }
  ],
  "findings": []
