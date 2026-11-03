@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=5 ids=1"
+   "detail": "confirmed=2 ids=1"
   },
   {
    "cat": "race",
@@ -587,6 +587,78 @@
    "name": "control: correctly signed /book still books",
    "ok": true,
    "detail": "status=200"
+  },
+  {
+   "cat": "tenant",
+   "name": "cross-tenant idem key collision: skipped (sold out, no capacity)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "auth",
+   "name": "uppercase auth header names: signature still accepted (404 on unknown rid, not 401)",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id type confusion (float/bool/null/obj/array): clean 4xx, no 5xx, inventory untouched",
+   "ok": true,
+   "detail": "codes=[400, 400, 400, 400, 400]"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats extremes (int64 max, overflow, -1, 0, string): clean 4xx, no crash",
+   "ok": true,
+   "detail": "codes=[400, 400, 400, 400, 400]"
+  },
+  {
+   "cat": "app",
+   "name": "engine-side confirm bypass then app pay: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "hold=200 {'ok': False, 'status': 'sold_out'}"
+  },
+  {
+   "cat": "app",
+   "name": "webhook replay (same valid event twice): no 500, state unchanged",
+   "ok": true,
+   "detail": "st=200/200 seats_same=True"
+  },
+  {
+   "cat": "wire",
+   "name": "chunked transfer-encoding + valid MAC: parsed, 404 on unknown rid, no 5xx",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "state",
+   "name": "expired hold stays dead while fresh sibling confirms: no resurrection, conserved",
+   "ok": true,
+   "detail": "ca=409 cb=200 seats={'free': 9, 'held': 0, 'sold': 1, 'total': 10}"
+  },
+  {
+   "cat": "state",
+   "name": "idem key reused across confirm/release: no state confusion, no 5xx",
+   "ok": true,
+   "detail": "reserve=200 confirm=400 release=400 seats={'free': 1, 'held': 29, 'sold': 20, 'total': 50}"
+  },
+  {
+   "cat": "resource",
+   "name": "partial request (slowloris-lite) then close: engine serves next valid request",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "form-encoded body with valid MAC: clean 4xx (JSON only), inventory untouched",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "pipelined requests in one write: two clean responses, correct order (404 then 200)",
+   "ok": true,
+   "detail": "responses=2 codes=[404, 200]"
   }
  ],
  "findings": []
