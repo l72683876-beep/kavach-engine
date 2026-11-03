@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=2 ids=1"
+   "detail": "confirmed=3 ids=1"
   },
   {
    "cat": "race",
@@ -659,6 +659,78 @@
    "name": "pipelined requests in one write: two clean responses, correct order (404 then 200)",
    "ok": true,
    "detail": "responses=2 codes=[404, 200]"
+  },
+  {
+   "cat": "state",
+   "name": "multi-seat boundary: reserve-4 at 3 free reports sold_out (200 body), 3 held, release restores 3 free",
+   "ok": true,
+   "detail": "a=200/sold_out b=200 r=200 seats={'free': 3, 'held': 0, 'sold': 7, 'total': 10}"
+  },
+  {
+   "cat": "wl",
+   "name": "waitlist over-fulfil guard: 1-seat entry promoted exactly once, 2-seat entry not force-fulfilled",
+   "ok": true,
+   "detail": "w1=(200, {'position': 1, 'seats': 1, 'status': 'queue w2=(200, {'position': 2, 'seats': 2, 'status': 'queue rel=200 seats={'free': 0, 'held': 1, 'sold': 9, 'total': 10}"
+  },
+  {
+   "cat": "wl",
+   "name": "cancelled entry never promotes; 2-seat entry not fulfilled by 1 freed seat",
+   "ok": true,
+   "detail": "cancel=200 seats={'free': 1, 'held': 0, 'sold': 9, 'total': 10} sold0=9"
+  },
+  {
+   "cat": "race",
+   "name": "20 parallel confirms on one 10-seat hold: skipped (insufficient free)",
+   "ok": true,
+   "detail": "free=2"
+  },
+  {
+   "cat": "auth",
+   "name": "request-id reuse with different body (both valid MACs): replay guard rejects",
+   "ok": true,
+   "detail": "r1=200 r2=401 {'status': 'replay'}"
+  },
+  {
+   "cat": "auth",
+   "name": "negative and non-integer timestamps: 401, no 5xx",
+   "ok": true,
+   "detail": "401/401"
+  },
+  {
+   "cat": "auth",
+   "name": "signature hex with trailing padding: 401",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency key extremes (10KB, 1-char, control chars): no 5xx, engine alive",
+   "ok": true,
+   "detail": "codes=[200, 200, 200]"
+  },
+  {
+   "cat": "fuzz",
+   "name": "1000-deep nested JSON user_id: clean 4xx, engine alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "duplicate JSON keys (seats 1 then 5): no 5xx, inventory conserved",
+   "ok": true,
+   "detail": "status=400 body={'status': 'bad_request'}"
+  },
+  {
+   "cat": "app",
+   "name": "pay with case-varied user_id rejected: exact user binding",
+   "ok": true,
+   "detail": "pay=403 p={'ok': False, 'status': 'forbidden'} release=200"
+  },
+  {
+   "cat": "app",
+   "name": "1MB webhook payload: no 500, app alive",
+   "ok": true,
+   "detail": "status=200"
   }
  ],
  "findings": []
