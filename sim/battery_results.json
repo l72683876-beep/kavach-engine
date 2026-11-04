@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=5 ids=1"
+   "detail": "confirmed=2 ids=1"
   },
   {
    "cat": "race",
@@ -803,6 +803,78 @@
    "name": "app pay vs engine release race: skipped (hold unavailable)",
    "ok": true,
    "detail": "hold=200 {'ok': False, 'status': 'sold_out'}"
+  },
+  {
+   "cat": "auth",
+   "name": "epoch-milliseconds timestamp (13-digit): rejected, no hold, conserved",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "SHA-1 signature instead of SHA-256: 401, no hold",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "256-char idempotency key: skipped (no free seat)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats=true and seats=1.5: 400, no hold created",
+   "ok": true,
+   "detail": "bool=400 frac=400 held 28->28"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with numeric user_id: no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "confirm with empty reservation_id: 4xx, engine alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "rate",
+   "name": "60 reads + 60 writes rapid: no 5xx, reads still served after write burst (final /seats 200)",
+   "ok": true,
+   "detail": "reads=[200] writes_429=55 final=200"
+  },
+  {
+   "cat": "race",
+   "name": "last-2 race: skipped (free<2)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "app",
+   "name": "app pay after out-of-band release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "hold=200"
+  },
+  {
+   "cat": "wire",
+   "name": "newline injection in header value: rejected or closed, no smuggled header, engine alive",
+   "ok": true,
+   "detail": "resp=b'HTTP/1.1 404 Not Found\\r\\nConten' next=404"
+  },
+  {
+   "cat": "wl",
+   "name": "same user two waitlist entries (different keys): handled, both cancel clean",
+   "ok": true,
+   "detail": "join=200,200"
+  },
+  {
+   "cat": "auth",
+   "name": "body tenant-override attempt: skipped (reserve failed)",
+   "ok": true,
+   "detail": "st=400"
   }
  ],
  "findings": []
