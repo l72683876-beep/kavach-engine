@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=2 ids=1"
+   "detail": "confirmed=1 ids=1"
   },
   {
    "cat": "race",
@@ -875,6 +875,78 @@
    "name": "body tenant-override attempt: skipped (reserve failed)",
    "ok": true,
    "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "signature over /reserve/ but request to /reserve: 401, no hold",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "duplicate Authorization headers (otherkey first): answered cleanly, engine alive, next request fine",
+   "ok": true,
+   "detail": "resp=b'HTTP/1.1 401 Unauthorized\\r\\nCache-Control' next=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with 10KB user_id: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "JSON body with UTF-8 BOM: 4xx, no hold",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "JSON body with trailing garbage: 4xx, no hold",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "10 parallel releases of one hold: skipped (no free seat)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "state",
+   "name": "confirm with empty user_id: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats as string \"2\": no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app pay with unknown huge reservation_id: graceful, no 500",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "app",
+   "name": "GET on webhook endpoint with valid token: no 500, app alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "rate",
+   "name": "user limiter recovers after burst: 8 rapid -> some 429, wait 3.5s -> served again",
+   "ok": true,
+   "detail": "burst=[200, 200, 200, 200, 200, 429, 429, 429] final=200"
+  },
+  {
+   "cat": "wl",
+   "name": "waitlist cancel twice: first clean, second 4xx, conserved",
+   "ok": true,
+   "detail": "join=200 c1=200 c2=404"
   }
  ],
  "findings": []

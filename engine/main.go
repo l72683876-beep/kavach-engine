@@ -1442,6 +1442,13 @@ func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
 		return "", nil, false
 	}
+	// strict framing: anything but whitespace after the top-level JSON value is
+	// a desync smell, and Decoder.Decode silently ignores it, so fail closed
+	if dec.More() {
+		atomic.AddInt64(&e.errors, 1)
+		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+		return "", nil, false
+	}
 	// cluster peers forward through the limiter on purpose: the caller was
 	// already limited at the edge node. The forwarded claim is honored only
 	// from a configured peer's connection; a client-set header never skips
