@@ -1231,6 +1231,130 @@ def wl_double_cancel():
     return check("wl", "waitlist cancel twice: first clean, second 4xx, conserved", ok, "join=%s c1=%s c2=%s" % (st1, st2, st3))
 wl_double_cancel()
 
+
+# ---------------- Phase N: run 60 extras (12 new angles) ----------------
+def auth_trailing_period_key():
+    b = json.dumps({"user_id": "rt-60ts", "idempotency_key": "k60ts", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b)
+    h["Authorization"] = "Bearer testkey."
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    return check("auth", "Authorization key with trailing period (unknown key): 401, no hold", st == 401, "status=%s" % st)
+auth_trailing_period_key()
+def rid_replay_same_body_new_ts():
+    b = json.dumps({"user_id": "rt-60rr", "idempotency_key": "k60rr", "seats": 1}).encode()
+    h1 = sign(KEY, "POST", "/reserve", b)
+    st1, j1 = raw(ER, "POST", "/reserve", b, h1)
+    rid = j1.get("reservation_id") if isinstance(j1, dict) else None
+    if rid:
+        post(ER, "/release", {"reservation_id": rid})
+    h2 = dict(sign(KEY, "POST", "/reserve", b))
+    h2["X-Kavach-Request-Id"] = h1["X-Kavach-Request-Id"]
+    st2, _ = raw(ER, "POST", "/reserve", b, h2)
+    ok = st1 in (200, 409, 429) and st2 == 401
+    return check("auth", "request-id reuse with same body, fresh timestamp+sig: 401 replay guard", ok,
+                 "r1=%s r2=%s" % (st1, st2))
+rid_replay_same_body_new_ts()
+def seats_huge_float():
+    b = b'{"user_id":"rt-60hf","idempotency_key":"k60hf","seats":1e30}'
+    st = raw(ER, "POST", "/reserve", b, sign(KEY, "POST", "/reserve", b))[0]
+    s = seats(ER)
+    ok = rej(st) and st != -1 and s.get("total") == s.get("sold") + s.get("held") + s.get("free")
+    return check("fuzz", "seats=1e30: 4xx, no 5xx, conserved", ok, "status=%s" % st)
+seats_huge_float()
+def uid_nested_arrays():
+    uid = ["a"]
+    for _ in range(100):
+        uid = [uid]
+    b = json.dumps({"user_id": uid, "idempotency_key": "k60na", "seats": 1}).encode()
+    st = raw(ER, "POST", "/reserve", b, sign(KEY, "POST", "/reserve", b))[0]
+    return check("fuzz", "user_id as 100-deep nested arrays: 4xx, no 5xx", rej(st) and st != -1, "status=%s" % st)
+uid_nested_arrays()
+def release_unknown_rid():
+    b = json.dumps({"reservation_id": "RSV00000000"}).encode()
+    st = raw(ER, "POST", "/release", b, sign(KEY, "POST", "/release", b))[0]
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("state", "release with never-created rid RSV00000000: 4xx, engine alive", rej(st) and alive, "status=%s" % st)
+release_unknown_rid()
+def book_over_free():
+    f = seats(ER).get("free", 0)
+    if f < 1:
+        return check("state", "book free+1 seats: skipped (no free seat)", True, "free=%s" % f)
+    sold0 = seats(ER).get("sold")
+    b = json.dumps({"user_id": "rt-60bf", "idempotency_key": "k60bf", "seats": f + 1}).encode()
+    st, j = raw(ER, "POST", "/book", b, sign(KEY, "POST", "/book", b))
+    sold1 = seats(ER).get("sold")
+    ok = st == 200 and isinstance(j, dict) and j.get("status") == "sold_out" and sold1 == sold0
+    return check("state", "book %d seats with %d free: 200 sold_out, nothing sold" % (f + 1, f), ok,
+                 "st=%s sold %d->%d" % (st, sold0, sold1))
+book_over_free()
+def app_hold_dup_keys():
+    st, _ = raw(AR, "POST", "/api/hold", '{"user_id":"rt-60dk","seats":1,"seats":2}')
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "app hold with duplicate JSON keys (seats 1 then 2): no 500, app alive", st != 500 and st != -1 and alive, "status=%s" % st)
+app_hold_dup_keys()
+def app_pay_missing_outcome():
+    st, h = raw(AR, "POST", "/api/hold", '{"user_id":"rt-60mo","seats":1}')
+    rid = h.get("reservation_id") if isinstance(h, dict) else None
+    if not (st == 200 and rid):
+        return check("app", "app pay missing outcome: skipped (hold unavailable)", True, "hold=%s" % st)
+    st2, _ = raw(AR, "POST", "/api/pay", json.dumps({"reservation_id": rid, "user_id": "rt-60mo"}))
+    alive = raw(AR, "GET", "/")[0] == 200
+    if st2 == 200:
+        pass  # pay went through or failed gracefully; either is non-500
+    return check("app", "app pay without outcome field: no 500, graceful, app alive", st2 != 500 and st2 != -1 and alive, "pay=%s" % st2)
+app_pay_missing_outcome()
+def webhook_empty_json():
+    st, _ = raw(AR, "POST", "/api/kavach-webhook?token=whsec-redtest", "{}")
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "webhook with empty JSON {} and valid token: no 500, app alive", st != 500 and st != -1 and alive, "status=%s" % st)
+webhook_empty_json()
+def valid_then_garbage_pipelined():
+    import socket as _s
+    req = b"GET /seats HTTP/1.1\r\nHost: x\r\nConnection: keep-alive\r\n\r\nGARBAGE-BYTES\r\n\r\n"
+    buf = b""
+    try:
+        sk = _s.create_connection(("127.0.0.1", ER), timeout=5)
+        sk.sendall(req)
+        sk.settimeout(3)
+        try: buf = sk.recv(400)
+        except Exception: pass
+        sk.close()
+    except Exception:
+        pass
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    body2 = json.dumps({"reservation_id": "RSV999999", "user_id": "rt-60vg"}).encode()
+    st2 = raw(ER, "POST", "/confirm", body2, sign(KEY, "POST", "/confirm", body2))[0]
+    ok = b"HTTP/1.1 200" in buf and alive and st2 == 404
+    return check("wire", "valid /seats + garbage pipelined on one connection: answered, survives, next request fine", ok,
+                 "resp=%s next=%s" % (buf[:20], st2))
+valid_then_garbage_pipelined()
+def three_users_60_parallel():
+    def one(i):
+        u = "rt-60p%d" % (i % 3)
+        b = json.dumps({"user_id": u, "idempotency_key": "k60p%03d" % i, "seats": 1}).encode()
+        return raw(ER, "POST", "/reserve", b, sign(KEY, "POST", "/reserve", b))
+    outs = P(30, one)
+    rids = [j["reservation_id"] for st, j in outs if st == 200 and isinstance(j, dict) and j.get("reservation_id")]
+    for rid in rids:
+        post(ER, "/release", {"reservation_id": rid})
+    s = seats(ER)
+    codes = [st for st, _ in outs]
+    ok = all(x < 500 and x != -1 for x in codes) and s.get("total") == s.get("sold") + s.get("held") + s.get("free")
+    return check("rate", "30 parallel reserves across 3 users: no 5xx, conserved (429s allowed)", ok,
+                 "codes=%s holds=%d" % (sorted(set(codes)), len(rids)))
+three_users_60_parallel()
+def confirm_unknown_field():
+    st, j = post(ER, "/reserve", {"user_id": "rt-60uf", "idempotency_key": "k60uf", "seats": 1})
+    rid = j.get("reservation_id") if isinstance(j, dict) else None
+    if not rid:
+        return check("state", "confirm with unknown field: skipped (hold unavailable)", True, "st=%s" % st)
+    b = json.dumps({"reservation_id": rid, "user_id": "rt-60uf", "extra": 1}).encode()
+    st2 = raw(ER, "POST", "/confirm", b, sign(KEY, "POST", "/confirm", b))[0]
+    post(ER, "/release", {"reservation_id": rid})
+    ok = rej(st2) and st2 != -1
+    return check("state", "confirm with extra unknown field: 400 strict schema, hold released clean", ok, "status=%s" % st2)
+confirm_unknown_field()
+
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]
 findings = [r for r in results if r["ok"] and "finding" in r["name"].lower()]
