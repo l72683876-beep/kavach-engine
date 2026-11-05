@@ -343,6 +343,9 @@ func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
 	if ts == "" || rid == "" || sig == "" {
 		return "", http.StatusUnauthorized, "unauthorized"
 	}
+	if len(rid) > 128 { // bound the replay-cache key: rids are SDK-generated uuids (36 chars)
+		return "", http.StatusUnauthorized, "unauthorized"
+	}
 	tsVal, err := strconv.ParseInt(ts, 10, 64)
 	now := time.Now().Unix()
 	if err != nil || tsVal < now-a.window || tsVal > now+a.window {
