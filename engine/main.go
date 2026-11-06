@@ -319,6 +319,11 @@ func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
 	if !a.enabled {
 		return "local", 0, ""
 	}
+	// RFC 7235: a request carrying more than one Authorization header is
+	// invalid. Go would silently use only the first; reject instead.
+	if n := len(r.Header.Values("Authorization")); n > 1 {
+		return "", http.StatusBadRequest, "bad_request"
+	}
 	key := r.Header.Get("Authorization")
 	key = strings.TrimPrefix(key, "Bearer ")
 	tenant, ok := a.keys[key]
@@ -1782,6 +1787,21 @@ func (e *Engine) writeReservationState(w http.ResponseWriter, res *Reservation) 
 // handleStatus lets a client resolve an ambiguous timeout on the direct
 // /book path: query the stored outcome of an idempotency key instead of
 // blindly re-submitting.
+
+// methodGuard rejects TRACE outright: it has no legitimate use here and is
+// the classic Cross-Site Tracing vector (RFC 7231 says servers SHOULD
+// refuse it). Applied globally, before routing, even with tracing off.
+func methodGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodTrace {
+			w.Header().Set("Allow", "GET, POST, HEAD")
+			writeJSON(w, http.StatusMethodNotAllowed, Result{Status: "method_not_allowed"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (e *Engine) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2295,5 +2315,5 @@ func main() {
 		defer shutdownTracing(context.Background())
 		log.Printf("kavach: otel tracing on, endpoint %s, sample ratio %.2f", *otelEndpoint, *otelRatio)
 	}
-	log.Fatal(http.ListenAndServe(*addr, e.tracingMiddleware(http.DefaultServeMux)))
+	log.Fatal(http.ListenAndServe(*addr, e.tracingMiddleware(methodGuard(http.DefaultServeMux))))
 }
