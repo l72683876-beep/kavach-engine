@@ -1193,7 +1193,7 @@ func (e *Engine) handleWaitlistJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer atomic.AddInt64(&e.inFlight, -1)
-	if req.User == "" || req.IdemKey == "" || req.Seats < 1 || req.Seats > 4 {
+	if req.User == "" || strings.TrimSpace(req.IdemKey) == "" || req.Seats < 1 || req.Seats > 4 {
 		atomic.AddInt64(&e.errors, 1)
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
 		return
@@ -1488,7 +1488,7 @@ func (e *Engine) handleBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer atomic.AddInt64(&e.inFlight, -1)
-	if req.User == "" || req.IdemKey == "" || req.Seats < 1 || req.Seats > 4 {
+	if req.User == "" || strings.TrimSpace(req.IdemKey) == "" || req.Seats < 1 || req.Seats > 4 {
 		atomic.AddInt64(&e.errors, 1)
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
 		return
@@ -1556,7 +1556,7 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer atomic.AddInt64(&e.inFlight, -1)
-	if req.User == "" || req.IdemKey == "" || req.Seats < 1 || req.Seats > 4 {
+	if req.User == "" || strings.TrimSpace(req.IdemKey) == "" || req.Seats < 1 || req.Seats > 4 {
 		atomic.AddInt64(&e.errors, 1)
 		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
 		return
