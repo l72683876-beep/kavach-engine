@@ -320,9 +320,12 @@ func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
 		return "local", 0, ""
 	}
 	// RFC 7235: a request carrying more than one Authorization header is
-	// invalid. Go would silently use only the first; reject instead.
-	if n := len(r.Header.Values("Authorization")); n > 1 {
-		return "", http.StatusBadRequest, "bad_request"
+	// invalid. Go would silently use only the first; reject instead. The
+	// same first-wins hazard applies to every Kavach security header.
+	for _, h := range []string{"Authorization", "X-Kavach-Timestamp", "X-Kavach-Request-Id", "X-Kavach-Signature"} {
+		if n := len(r.Header.Values(h)); n > 1 {
+			return "", http.StatusBadRequest, "bad_request"
+		}
 	}
 	key := r.Header.Get("Authorization")
 	key = strings.TrimPrefix(key, "Bearer ")
@@ -1788,17 +1791,22 @@ func (e *Engine) writeReservationState(w http.ResponseWriter, res *Reservation) 
 // /book path: query the stored outcome of an idempotency key instead of
 // blindly re-submitting.
 
-// methodGuard rejects TRACE outright: it has no legitimate use here and is
-// the classic Cross-Site Tracing vector (RFC 7231 says servers SHOULD
-// refuse it). Applied globally, before routing, even with tracing off.
+// methodGuard allowlists the methods the API actually serves (GET, POST,
+// HEAD) and rejects everything else outright: it has no legitimate use
+// here, and methodless route registration would otherwise serve stateful
+// or read handlers under any invented method (TRACE, the classic
+// Cross-Site Tracing vector, included). Applied globally, before routing,
+// even with tracing off.
 func methodGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodTrace {
+		switch r.Method {
+		case http.MethodGet, http.MethodPost, http.MethodHead:
+			next.ServeHTTP(w, r)
+		default:
 			w.Header().Set("Allow", "GET, POST, HEAD")
 			writeJSON(w, http.StatusMethodNotAllowed, Result{Status: "method_not_allowed"})
 			return
 		}
-		next.ServeHTTP(w, r)
 	})
 }
 
