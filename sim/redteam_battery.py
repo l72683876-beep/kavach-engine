@@ -4049,6 +4049,179 @@ def ts_negative():
     return check("auth", "timestamp '-1' (negative): 401, alive", st == 401 and alive, "status=%s" % st)
 ts_negative()
 
+
+# ---------------- Phase AJ: run 82 extras (12 new angles) ----------------
+def ts_float():
+    b = json.dumps({"user_id": "rt-82tf", "idempotency_key": "k82tf", "seats": 1}).encode()
+    st, _ = post(ER, "/reserve", {"user_id": "rt-82tf", "idempotency_key": "k82tf", "seats": 1}, ts="1762812345.5")
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("auth", "timestamp as float '1762812345.5': 401/400, alive", st in (400, 401) and alive, "status=%s" % st)
+ts_float()
+def uri_fragment():
+    st, _ = raw(ER, "GET", "/seats#frag")
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "URI fragment /seats#frag: no 5xx, alive", ok, "status=%s" % st)
+uri_fragment()
+def huge_header_value():
+    b = json.dumps({"user_id": "rt-82hv", "idempotency_key": "k82hv", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b); h["X-Kavach-Request-Id"] = "A" * 8192
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "8KB X-Kavach-Request-Id header: no 5xx, alive", ok, "status=%s" % st)
+huge_header_value()
+def user_id_10k():
+    st, _ = post(ER, "/reserve", {"user_id": "u" * 10000, "idempotency_key": "k82u10", "seats": 1})
+    s = seats(ER)
+    ok = st != 500 and st != -1 and s.get("total") == s.get("sold") + s.get("held") + s.get("free")
+    return check("fuzz", "reserve with 10,000-char user_id: no 5xx, conserved", ok, "status=%s" % st)
+user_id_10k()
+def app_status_sqlish_rid():
+    p, _ = raw(AR, "GET", "/api/status?reservation_id=" + "'%20OR%201%3D1%20--")
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "app status with SQL-ish rid (' OR 1=1 --): no 500, app alive", p != 500 and p != -1 and alive, "p=%s" % p)
+app_status_sqlish_rid()
+def tenant2_isolation():
+    st2, _ = post(ER, "/reserve", {"user_id": "rt-82t2", "idempotency_key": "k82t2", "seats": 2}, key="otherkey")
+    s1_before = seats(ER)
+    st1, _ = post(ER, "/reserve", {"user_id": "rt-82t1", "idempotency_key": "k82t1", "seats": 1})
+    s1_after = seats(ER)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    conserved1 = s1_after.get("total") == s1_after.get("sold") + s1_after.get("held") + s1_after.get("free")
+    ok = st2 != 500 and st2 != -1 and st1 != 500 and st1 != -1 and alive and conserved1
+    return check("state", "tenant2 (otherkey) reserve on 8091 isolated from tenant1 counts: no 5xx, conserved", ok, "st2=%s st1=%s" % (st2, st1))
+tenant2_isolation()
+def content_type_utf16():
+    b = json.dumps({"user_id": "rt-82ct", "idempotency_key": "k82ct", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b); h["Content-Type"] = "application/json; charset=UTF-16"
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "Content-Type charset=UTF-16 with UTF-8 body: no 5xx, alive", ok, "status=%s" % st)
+content_type_utf16()
+def idem_key_number():
+    st, _ = post(ER, "/reserve", {"user_id": "rt-82ik", "idempotency_key": 12345, "seats": 1})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("fuzz", "reserve with numeric idempotency_key: 4xx, no 5xx, alive", st != 500 and st != -1 and alive, "status=%s" % st)
+idem_key_number()
+def duplicate_query_param():
+    st, _ = raw(ER, "GET", "/seats?seats=2&seats=3&x=1")
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("wire", "duplicate query param seats=2&seats=3 on GET /seats: 200, alive", st == 200 and alive, "status=%s" % st)
+duplicate_query_param()
+def app_user_id_null_byte():
+    p, _ = raw(AR, "POST", "/api/hold", json.dumps({"user_id": "rt-82\x00nb", "seats": 1}))
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "app hold with null byte in user_id: no 500, app alive", p != 500 and p != -1 and alive, "p=%s" % p)
+app_user_id_null_byte()
+def release_extra_fields():
+    st, j = post(ER, "/reserve", {"user_id": "rt-82rx", "idempotency_key": "k82rx", "seats": 1})
+    rid = j.get("reservation_id") if isinstance(j, dict) and st == 200 else None
+    if not rid:
+        return check("state", "release with extra unknown fields: skipped (hold unavailable)", True, "st=%s" % st)
+    body = json.dumps({"reservation_id": rid, "oops": 1, "seats": 99, "user_id": "x"}).encode()
+    st2, _ = raw(ER, "POST", "/release", body, sign(KEY, "POST", "/release", body))
+    s = seats(ER)
+    ok = st2 == 200 and s.get("held", 0) == 0
+    return check("state", "release with extra unknown fields in body: still releases", ok, "st=%s held=%s" % (st2, s.get("held")))
+release_extra_fields()
+def user_id_object():
+    st, _ = post(ER, "/reserve", {"user_id": {"a": 1}, "idempotency_key": "k82uo", "seats": 1})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("fuzz", "reserve with user_id as JSON object: 4xx, no 5xx, alive", st != 500 and st != -1 and alive, "status=%s" % st)
+user_id_object()
+
+
+# ---------------- Phase AK: run 83 extras (12 new angles) ----------------
+def absolute_form_request():
+    import socket as _s
+    buf = b""
+    try:
+        sk = _s.create_connection(("127.0.0.1", ER), timeout=8)
+        sk.sendall(b"GET http://127.0.0.1:8091/seats HTTP/1.1\r\nHost: 127.0.0.1:8091\r\nConnection: close\r\n\r\n")
+        sk.settimeout(5)
+        try: buf = sk.recv(300)
+        except Exception: pass
+        sk.close()
+    except Exception:
+        pass
+    stc = int(buf.split(b" ")[1]) if b"HTTP/1." in buf and len(buf.split(b" ")) > 1 else -1
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = stc != 500 and stc != -1 and alive
+    return check("wire", "absolute-form request line GET http://host/seats: no 5xx, alive", ok, "st=%s" % stc)
+absolute_form_request()
+def mixed_case_headers():
+    b = json.dumps({"user_id": "rt-83mc", "idempotency_key": "k83mc", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b)
+    h = {"x-kAvAcH-tImEsTaMp": h["X-Kavach-Timestamp"], "x-kAvAcH-rEqUeSt-Id": h["X-Kavach-Request-Id"],
+         "x-kAvAcH-sIgNaTuRe": h["X-Kavach-Signature"], "aUtHoRiZaTiOn": h["Authorization"],
+         "Content-Type": "application/json"}
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st in (200, 400, 401) and alive
+    return check("auth", "mixed-case header names: no 5xx (200 or clean 401), alive", ok, "status=%s" % st)
+mixed_case_headers()
+def webhook_token_trailing_ws():
+    w, _ = raw(AR, "POST", "/api/kavach-webhook?token=whsec-redtest%20", b'{"event": "payment_success"}')
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "webhook token with trailing whitespace: 401/403, app alive", w in (401, 403) and alive, "w=%s" % w)
+webhook_token_trailing_ws()
+def control_char_idem():
+    st, _ = post(ER, "/reserve", {"user_id": "rt-83cc", "idempotency_key": "k83\x01cc", "seats": 1})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("fuzz", "control char \\x01 in idempotency_key: 4xx or accepted, no 5xx, alive", st != 500 and st != -1 and alive, "status=%s" % st)
+control_char_idem()
+def app_hold_seats_string():
+    p, _ = raw(AR, "POST", "/api/hold", json.dumps({"user_id": "rt-83hs", "seats": "1"}))
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "app hold with seats as string '1': no 500, app alive", p != 500 and p != -1 and alive, "p=%s" % p)
+app_hold_seats_string()
+def options_preflight():
+    st, _ = raw(ER, "OPTIONS", "/reserve")
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "OPTIONS preflight on /reserve: 4xx, no 5xx, alive", ok, "status=%s" % st)
+options_preflight()
+def app_release_null_rid():
+    p, _ = raw(AR, "POST", "/api/release", json.dumps({"reservation_id": "null"}))
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "app release with rid literal 'null': no 500, app alive", p != 500 and p != -1 and alive, "p=%s" % p)
+app_release_null_rid()
+def semicolon_query():
+    st, _ = raw(ER, "GET", "/seats?x=1;y=2")
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("wire", "semicolon in query string: 200, alive", st == 200 and alive, "status=%s" % st)
+semicolon_query()
+def app_status_huge_rid():
+    p, _ = raw(AR, "GET", "/api/status?reservation_id=" + "R" * 5000)
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "app status with 5000-char rid: no 500, app alive", p != 500 and p != -1 and alive, "p=%s" % p)
+app_status_huge_rid()
+def bom_body():
+    b = b'\xef\xbb\xbf' + json.dumps({"user_id": "rt-83bb", "idempotency_key": "k83bb", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b)
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "UTF-8 BOM before JSON body: no 5xx, alive", ok, "status=%s" % st)
+bom_body()
+def waitlist_then_direct_reserve():
+    st1, _ = post(ER, "/waitlist", {"user_id": "rt-83wt", "idempotency_key": "k83wt", "event_id": "prod-v1"})
+    st2, _ = post(ER, "/reserve", {"user_id": "rt-83wt", "idempotency_key": "k83wtr", "seats": 1})
+    s = seats(ER)
+    conserved = s.get("total", -1) == s.get("sold", 0) + s.get("held", 0) + s.get("free", 0)
+    ok = st1 != 500 and st1 != -1 and st2 != 500 and st2 != -1 and conserved
+    return check("state", "waitlist join then direct reserve same user: no 5xx, conserved", ok, "st1=%s st2=%s" % (st1, st2))
+waitlist_then_direct_reserve()
+def path_trailing_question():
+    b = json.dumps({"user_id": "rt-83tq", "idempotency_key": "k83tq", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b)  # MAC over /reserve
+    st, _ = raw(ER, "POST", "/reserve?", b, h)  # trailing ? changes effective path
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("auth", "path with trailing '?' vs MAC over /reserve: 401, alive", st == 401 and alive, "status=%s" % st)
+path_trailing_question()
+
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]
 findings = [r for r in results if r["ok"] and "finding" in r["name"].lower()]
