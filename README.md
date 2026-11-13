@@ -100,6 +100,16 @@ curl -X POST localhost:8080/reserve -d '{
 }'
 ```
 
+Each item can also carry an attribute filter when the SKU has a layout
+(`-layout "vip=/etc/vip.json"`, JSON `{"ranges":[{"from":0,"to":49,"attrs":{"tier":"A"}}]}`,
+first matching range wins): only seats matching the filter are taken, the
+response carries each seat's `seat_attrs`, and the filter is part of the
+idempotency fingerprint (the same key with a different filter conflicts).
+
+```json
+{"user_id":"u1","idempotency_key":"seat-9","items":[{"sku":"vip","count":2,"attrs":{"tier":"A"}}]}
+```
+
 Any shortage rolls back every SKU already taken and returns
 `{"status":"sold_out","shortage":{"vip":2}}`, so a multi-SKU hold never
 lands partially. Confirm, release and expiry restore each SKU's own pool;

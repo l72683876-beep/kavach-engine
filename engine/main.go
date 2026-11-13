@@ -84,6 +84,26 @@ func (e *Engine) skuFor(name string) *Inventory {
 	return e.skus[name]
 }
 
+// skuPair returns a SKU's inventory and its attribute layout (nil when the
+// SKU has none); the reserve path resolves through this one.
+func (e *Engine) skuPair(name string) (*Inventory, *Layout) {
+	if name == "" || name == "default" {
+		return e.inv, e.layouts["default"]
+	}
+	e.skuMu.RLock()
+	inv := e.skus[name]
+	e.skuMu.RUnlock()
+	return inv, e.layouts[name]
+}
+
+// layoutFor returns a SKU's attribute layout, or nil when it has none.
+func (e *Engine) layoutFor(name string) *Layout {
+	if name == "" || name == "default" {
+		return e.layouts["default"]
+	}
+	return e.layouts[name]
+}
+
 // tryTake atomically locks n seats, or returns nil when not enough are free.
 // A compare-and-swap on each seat means two workers can never hold the same seat.
 func (inv *Inventory) tryTake(n int) []int {
@@ -514,8 +534,9 @@ func resStateName(s int32) string {
 // seats came from and which seat indices they hold. A pre-2.4 reservation
 // has Items nil and reads as one allocation on the default inventory.
 type ItemAlloc struct {
-	SKU   string `json:"sku"`
-	Seats []int  `json:"seats"`
+	SKU    string            `json:"sku"`
+	Seats  []int             `json:"seats"`
+	Filter map[string]string `json:"filter,omitempty"` // v2.4 attribute filter the request named
 }
 
 // allocations returns the reservation's per-SKU allocation list, defaulting
@@ -543,11 +564,22 @@ type Reservation struct {
 	BookingID   string
 }
 
+// itemOut is one item line in a reservation response: which SKU, which
+// seats, the filter the request named, and (when the SKU has a layout) the
+// attributes of each seat, parallel to Seats.
+type itemOut struct {
+	SKU       string              `json:"sku"`
+	Seats     []int               `json:"seats"`
+	Filter    map[string]string   `json:"filter,omitempty"`
+	SeatAttrs []map[string]string `json:"seat_attrs,omitempty"`
+}
+
 // itemReq is one line of a multi-SKU reservation request: how many of one
 // named inventory to hold.
 type itemReq struct {
-	SKU   string `json:"sku"`
-	Count int    `json:"count"`
+	SKU   string            `json:"sku"`
+	Count int               `json:"count"`
+	Attrs map[string]string `json:"attrs"` // v2.4: attribute filter (tier/row/section)
 }
 
 // takeMulti reserves counts across several SKUs, all or nothing: SKUs are
@@ -556,19 +588,34 @@ type itemReq struct {
 // allocation already taken before the caller sees the shortage map. The
 // shortage map carries each requested SKU and its full requested count:
 // a multi-SKU hold never partially lands.
-func takeMulti(skuFor func(string) *Inventory, reqs []itemReq) ([]ItemAlloc, map[string]int) {
+func takeMulti(skuFor func(string) (*Inventory, *Layout), reqs []itemReq) ([]ItemAlloc, map[string]int) {
 	ordered := append([]itemReq(nil), reqs...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].SKU < ordered[j].SKU })
 	var taken []ItemAlloc
 	for _, rq := range ordered {
-		inv := skuFor(rq.SKU)
+		inv, layout := skuFor(rq.SKU)
 		if inv == nil {
 			return nil, map[string]int{rq.SKU: rq.Count}
 		}
-		seats := inv.tryTake(rq.Count)
+		var seats []int
+		if len(rq.Attrs) > 0 { // v2.4: attribute-filtered take
+			if layout == nil { // rejected earlier too; fail closed here anyway
+				for _, t := range taken {
+					if ti, _ := skuFor(t.SKU); ti != nil {
+						ti.release(t.Seats)
+					}
+				}
+				return nil, map[string]int{rq.SKU: rq.Count}
+			}
+			seats = takeMatching(inv, layout, rq.Count, rq.Attrs)
+		} else {
+			seats = inv.tryTake(rq.Count)
+		}
 		if seats == nil {
 			for _, t := range taken {
-				skuFor(t.SKU).release(t.Seats)
+				if ti, _ := skuFor(t.SKU); ti != nil {
+					ti.release(t.Seats)
+				}
 			}
 			short := make(map[string]int, len(ordered))
 			for _, r := range ordered {
@@ -576,7 +623,7 @@ func takeMulti(skuFor func(string) *Inventory, reqs []itemReq) ([]ItemAlloc, map
 			}
 			return nil, short
 		}
-		taken = append(taken, ItemAlloc{SKU: rq.SKU, Seats: seats})
+		taken = append(taken, ItemAlloc{SKU: rq.SKU, Seats: seats, Filter: rq.Attrs})
 	}
 	return taken, nil
 }
@@ -1092,6 +1139,7 @@ type job struct {
 type Engine struct {
 	inv          *Inventory
 	skus         map[string]*Inventory // named SKU inventories (v2.4); the -seats inventory stays the default
+	layouts      map[string]*Layout    // v2.4 per-SKU attribute layouts (config, not state)
 	skuMu        sync.RWMutex
 	userLim      rateLimiter
 	ipLim        rateLimiter
@@ -1830,6 +1878,10 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 				bad("unknown sku: " + it.SKU)
 				return
 			}
+			if len(it.Attrs) > 0 && e.layoutFor(it.SKU) == nil {
+				bad("no layout configured for sku: " + it.SKU)
+				return
+			}
 		}
 	} else if req.User == "" || strings.TrimSpace(req.IdemKey) == "" || req.Seats < 1 || req.Seats > 4 {
 		bad("")
@@ -1865,7 +1917,7 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 		// back everything and names the missing counts. In this phase a
 		// multi-SKU hold is served locally (no ring forwarding): per-SKU
 		// cluster sharding is the next milestone.
-		allocs, short := takeMulti(e.skuFor, req.Items)
+		allocs, short := takeMulti(e.skuPair, req.Items)
 		if short != nil {
 			atomic.AddInt64(&e.shortages, 1)
 			writeJSON(w, http.StatusOK, map[string]interface{}{"status": "sold_out", "shortage": short})
@@ -2090,7 +2142,29 @@ func (e *Engine) writeReservation(w http.ResponseWriter, code int, res *Reservat
 		"booking_id":      res.BookingID,
 	}
 	if len(res.Items) > 0 {
-		m["items"] = res.Items
+		items := make([]itemOut, len(res.Items))
+		for i, a := range res.Items {
+			items[i] = itemOut{SKU: a.SKU, Seats: a.Seats, Filter: a.Filter}
+			if layout := e.layoutFor(a.SKU); layout != nil {
+				inv := e.skuFor(a.SKU)
+				sa := make([]map[string]string, len(a.Seats))
+				any := false
+				for j, s := range a.Seats {
+					local := s - inv.offset
+					if local < 0 || local >= len(inv.seats) {
+						continue
+					}
+					sa[j] = layout.attrsFor(local)
+					if sa[j] != nil {
+						any = true
+					}
+				}
+				if any {
+					items[i].SeatAttrs = sa
+				}
+			}
+		}
+		m["items"] = items
 	}
 	writeJSON(w, code, m)
 }
@@ -2293,6 +2367,7 @@ func (e *Engine) metricsMap() map[string]interface{} {
 func main() {
 	seats := flag.Int("seats", 5000, "seats in inventory")
 	skusSpec := flag.String("skus", "", `v2.4 named SKU inventories, e.g. -skus "vip=100,standard=250"; the -seats inventory stays the default SKU`)
+	layoutSpec := flag.String("layout", "", `v2.4 attribute layouts per SKU, e.g. -layout "vip=/etc/vip.json,default=/etc/floor.json"; JSON: {"ranges":[{"from":0,"to":49,"attrs":{"tier":"A","row":"12"}}]}, first matching range wins`)
 	addr := flag.String("addr", ":8080", "listen address")
 	workers := flag.Int("workers", 16, "worker count")
 	shards := flag.Int("shards", 1, "multi-shard: number of independent event shards in this process, routed by event_id hash (1 = single pool)")
@@ -2485,6 +2560,35 @@ func main() {
 			skuSpecs[name] = n
 		}
 	}
+	layouts := map[string]*Layout{}
+	if *layoutSpec != "" {
+		for _, part := range strings.Split(*layoutSpec, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) != 2 {
+				log.Fatalf("kavach: -layout wants sku=path pairs, got %q", part)
+			}
+			name := strings.ToLower(strings.TrimSpace(kv[0]))
+			if name == "" {
+				log.Fatalf("kavach: -layout name is empty")
+			}
+			b, err := os.ReadFile(strings.TrimSpace(kv[1]))
+			if err != nil {
+				log.Fatalf("kavach: -layout %s: %v", name, err)
+			}
+			var lo Layout
+			if err := json.Unmarshal(b, &lo); err != nil {
+				log.Fatalf("kavach: -layout %s: %v", name, err)
+			}
+			if err := lo.validate(); err != nil {
+				log.Fatalf("kavach: -layout %s: %v", name, err)
+			}
+			layouts[name] = &lo
+		}
+	}
 	if len(skuSpecs) > 0 && (len(peers) > 1 || nShards > 1) {
 		log.Printf("kavach: SKUs are node-local in this phase; each node and shard carries its own counts and multi-SKU holds are served locally only")
 	}
@@ -2528,6 +2632,7 @@ func main() {
 		e := &Engine{
 			inv:          NewInventory(*seats, shardOffset),
 			skus:         skuMap,
+			layouts:      layouts,
 			userLim:      userLim,
 			ipLim:        ipLim,
 			globalLim:    globalLim,

@@ -44,7 +44,14 @@ cluster-wide waitlist.
   inventory stays the default SKU, every pre-2.4 path is untouched, and
   confirm/release/expiry/WAL replay/snapshot all restore per SKU. In this
   phase SKUs are node-local and multi-SKU holds are served locally only.
-- Attribute inventory: tier / row / section maps, not just counts.
+- [x] Attribute inventory: tier / row / section maps, not just counts.
+  `-layout "vip=/etc/vip.json"` loads each SKU's attribute ranges
+  (`{"ranges":[{"from":0,"to":49,"attrs":{"tier":"A","row":"12"}}]}`, first
+  match wins); a reserve item names `attrs: {"tier": "A"}` and only seats
+  matching the filter are taken, with the whole multi-SKU hold still
+  all-or-nothing and the filter part of the idempotency fingerprint.
+  Responses carry per-seat `seat_attrs`; a SKU without a layout rejects
+  attribute requests.
 - Transfers and resale-lock on confirmed bookings.
 
 ## 5. Ship discipline

@@ -110,9 +110,28 @@ func fpForItems(key, user string, items []itemReq, ev string) string {
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].SKU < ordered[j].SKU })
 	parts := make([]string, len(ordered))
 	for i, it := range ordered {
-		parts[i] = fmt.Sprintf("%s:%d", it.SKU, it.Count)
+		parts[i] = fmt.Sprintf("%s:%d%s", it.SKU, it.Count, filterSig(it.Attrs))
 	}
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%s", key, user, strings.Join(parts, ","), ev))))
+}
+
+// filterSig is the canonical string of an attribute filter: keys sorted,
+// joined so two clients writing the same filter in different orders
+// fingerprint the same reservation.
+func filterSig(f map[string]string) string {
+	if len(f) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(f))
+	for k := range f {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = k + "=" + f[k]
+	}
+	return "@" + strings.Join(parts, ";")
 }
 
 // validSKUName allows 1-32 chars of lowercase letters, digits, underscore
