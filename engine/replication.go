@@ -37,9 +37,11 @@ type replayEvent struct {
 	resID     string
 	tenant    string
 	user      string
-	seats     []int
-	items     []ItemAlloc
-	fp        string
+	seats      []int
+	items      []ItemAlloc
+	resaleLock bool
+	toUser     string
+	fp         string
 	wlID      string
 	wlSeats   int
 	expiresAt int64
@@ -65,6 +67,7 @@ func parseReplayEvent(line []byte) (replayEvent, bool) {
 		return replayEvent{}, false
 	}
 	gs := func(k string) string { s, _ := m[k].(string); return s }
+	gb := func(k string) bool { b, _ := m[k].(bool); return b }
 	gf := func(k string) float64 { f, _ := m[k].(float64); return f }
 	gi := func(k string) []int { return giAt(m, k) }
 	gitems := func(k string) []ItemAlloc {
@@ -86,6 +89,7 @@ func parseReplayEvent(line []byte) (replayEvent, bool) {
 		userID: gs("user_id"),
 		seats:  gi("seats"), items: gitems("items"), wlID: gs("waitlist_id"), wlSeats: int(gf("seats")),
 		key: gs("key"), expiresAt: int64(gf("expires_at")), fp: gs("fp"),
+		resaleLock: gb("resale_lock"), toUser: gs("to_user"),
 	}, true
 }
 
@@ -145,7 +149,8 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 				expires = time.Unix(0, ev.expiresAt)
 			}
 			res.put(&Reservation{ID: ev.resID, Tenant: ev.tenant, User: ev.user,
-				Seats: ev.seats, Items: ev.items, ExpiresAt: expires, State: resHeld}, "")
+				Seats: ev.seats, Items: ev.items, ResaleLock: ev.resaleLock,
+				ExpiresAt: expires, State: resHeld}, "")
 			if len(ev.items) > 0 {
 				for _, a := range ev.items {
 					if si := skuFor(a.SKU); si != nil {
@@ -178,6 +183,12 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 				}
 			} else {
 				inv.freeHeld(ev.seats)
+			}
+		case ev.kind == "transferred": // v2.4 resale: the booking's owner moves
+			if r, ok := res.get(ev.resID); ok {
+				r.mu.Lock()
+				r.User = ev.toUser
+				r.mu.Unlock()
 			}
 		case ev.kind == "waitlisted":
 			owner := ev.user // waitlist events carry user_id, hold events carry user

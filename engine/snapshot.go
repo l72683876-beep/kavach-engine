@@ -71,6 +71,7 @@ type snapReservation struct {
 	User        string      `json:"user"`
 	Seats       []int       `json:"seats"`
 	Items       []ItemAlloc `json:"items,omitempty"`
+	ResaleLock  bool        `json:"resale_lock,omitempty"`
 	State       int32       `json:"state"`
 	Fingerprint string `json:"fingerprint,omitempty"`
 	CreatedAt   int64  `json:"created_at"`
@@ -131,7 +132,7 @@ func (e *Engine) capture() *snapshotPayload {
 		seats := make([]int, len(r.Seats))
 		copy(seats, r.Seats)
 		p.Reservations = append(p.Reservations, snapReservation{
-			ID: r.ID, Tenant: r.Tenant, User: r.User, Seats: seats, Items: r.Items,
+			ID: r.ID, Tenant: r.Tenant, User: r.User, Seats: seats, Items: r.Items, ResaleLock: r.ResaleLock,
 			State: atomic.LoadInt32(&r.State), Fingerprint: r.Fingerprint,
 			CreatedAt: r.CreatedAt.UnixNano(), ExpiresAt: r.ExpiresAt.UnixNano(),
 			BookingID: r.BookingID,
@@ -337,7 +338,7 @@ func applySnapshot(p *snapshotPayload, inv *Inventory, res *ReservationStore,
 	res.idemIndex = make(map[string]string, len(p.ResIdem))
 	for _, sr := range p.Reservations {
 		r := &Reservation{
-			ID: sr.ID, Tenant: sr.Tenant, User: sr.User, Seats: sr.Seats, Items: sr.Items,
+			ID: sr.ID, Tenant: sr.Tenant, User: sr.User, Seats: sr.Seats, Items: sr.Items, ResaleLock: sr.ResaleLock,
 			Fingerprint: sr.Fingerprint,
 			CreatedAt:   time.Unix(0, sr.CreatedAt), ExpiresAt: time.Unix(0, sr.ExpiresAt),
 			BookingID: sr.BookingID,

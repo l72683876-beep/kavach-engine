@@ -557,11 +557,13 @@ type Reservation struct {
 	User        string
 	Seats       []int
 	Items       []ItemAlloc // multi-SKU allocation (v2.4); nil = single default-SKU hold
+	ResaleLock  bool        // v2.4: transfers are refused once set
 	State       int32 // atomic; CAS gives single-winner transitions
 	Fingerprint string
 	CreatedAt   time.Time
 	ExpiresAt   time.Time
 	BookingID   string
+	mu          sync.Mutex // guards the transfer rewrite of User
 }
 
 // itemOut is one item line in a reservation response: which SKU, which
@@ -1217,6 +1219,7 @@ type Engine struct {
 	waitCancelled int64
 	multiReserved int64
 	shortages     int64
+	transfers     int64
 	webhookSent   int64
 	webhookFailed int64
 	chaosStalls   int64
@@ -1250,6 +1253,9 @@ func (e *Engine) appendHold(event string, r *Reservation, bookingID string) {
 	}
 	if len(r.Items) > 0 {
 		rec["items"] = r.Items
+	}
+	if r.ResaleLock {
+		rec["resale_lock"] = true
 	}
 	line, _ := json.Marshal(rec)
 	atomic.AddInt64(&e.eventsSince, 1)
@@ -1828,11 +1834,12 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		User    string    `json:"user_id"`
-		IdemKey string    `json:"idempotency_key"`
-		Seats   int       `json:"seats"`
-		Items   []itemReq `json:"items"`
-		EventID string    `json:"event_id"`
+		User       string    `json:"user_id"`
+		IdemKey    string    `json:"idempotency_key"`
+		Seats      int       `json:"seats"`
+		Items      []itemReq `json:"items"`
+		ResaleLock bool      `json:"resale_lock"`
+		EventID    string    `json:"event_id"`
 	}
 	tenant, body, ok := e.precheck(w, r, &req)
 	if !ok {
@@ -1928,6 +1935,7 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 			Tenant:      tenant,
 			User:        req.User,
 			Items:       allocs,
+			ResaleLock:  req.ResaleLock,
 			Fingerprint: fp,
 			CreatedAt:   time.Now(),
 			ExpiresAt:   time.Now().Add(e.holdTTL),
@@ -1972,6 +1980,7 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 		Tenant:      tenant,
 		User:        req.User,
 		Seats:       seats,
+		ResaleLock:  req.ResaleLock,
 		Fingerprint: fp,
 		CreatedAt:   time.Now(),
 		ExpiresAt:   time.Now().Add(e.holdTTL),
@@ -2047,6 +2056,82 @@ func (e *Engine) handleConfirm(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&e.confirmed, 1)
 	atomic.AddInt64(&e.holdsConfirm, 1)
 	e.appendHold("confirmed", res, bookingID)
+	e.writeReservation(w, http.StatusOK, res)
+}
+
+// appendTransfer records a booking transfer with the same persist-before-ack
+// discipline as every other hold event.
+func (e *Engine) appendTransfer(event string, r *Reservation, from, to string) {
+	line, _ := json.Marshal(map[string]interface{}{
+		"event": event, "reservation_id": r.ID, "tenant": r.Tenant,
+		"from_user": from, "to_user": to, "ts": time.Now().UnixNano(),
+	})
+	atomic.AddInt64(&e.eventsSince, 1)
+	e.holdGC.commit(string(line))
+}
+
+// handleTransfer: v2.4 resale — hand a CONFIRMED booking to another user.
+// The engine's own guarantee is ownership, not identity: the caller is the
+// tenant's key holder, and an optional user_id must match the current owner.
+// resale_lock (set at reserve time) refuses every transfer; otherwise a
+// booking can move again (a resale), each move a WAL event replayed in order.
+// Transferring to the booking's current owner is idempotent success.
+func (e *Engine) handleTransfer(w http.ResponseWriter, r *http.Request) {
+	if e.followerReject(w) {
+		return
+	}
+	var req struct {
+		ReservationID string `json:"reservation_id"`
+		User          string `json:"user_id"`
+		ToUser        string `json:"to_user"`
+		EventID       string `json:"event_id"`
+	}
+	tenant, body, ok := e.precheck(w, r, &req)
+	if !ok {
+		return
+	}
+	defer atomic.AddInt64(&e.inFlight, -1)
+	if strings.TrimSpace(req.ToUser) == "" {
+		atomic.AddInt64(&e.errors, 1)
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"status": "bad_request", "error": "to_user required"})
+		return
+	}
+	res, found := e.res.get(req.ReservationID)
+	if !found || res.Tenant != tenant {
+		if len(e.peers) > 1 { // another node may own this booking
+			if code, respBody, ok := e.forwardFor(r, "/transfer", http.MethodPost, body, ""); ok {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(code)
+				w.Write(respBody)
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, Result{Status: "not_found"})
+		return
+	}
+	if req.User != "" && req.User != res.User {
+		writeJSON(w, http.StatusForbidden, Result{Status: "forbidden"})
+		return
+	}
+	if res.ResaleLock {
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "resale_locked"})
+		return
+	}
+	if atomic.LoadInt32(&res.State) != resConfirmed {
+		e.writeReservationState(w, res) // held/released/expired: 409 with the state
+		return
+	}
+	res.mu.Lock()
+	from := res.User
+	if from == req.ToUser {
+		res.mu.Unlock()
+		e.writeReservation(w, http.StatusOK, res) // idempotent: already theirs
+		return
+	}
+	res.User = req.ToUser
+	res.mu.Unlock()
+	atomic.AddInt64(&e.transfers, 1)
+	e.appendTransfer("transferred", res, from, req.ToUser)
 	e.writeReservation(w, http.StatusOK, res)
 }
 
@@ -2136,6 +2221,7 @@ func (e *Engine) writeReservation(w http.ResponseWriter, code int, res *Reservat
 	m := map[string]interface{}{
 		"status":          resStateName(atomic.LoadInt32(&res.State)),
 		"reservation_id":  res.ID,
+		"user_id":         res.User,
 		"seats":           res.Seats,
 		"hold_expires_at": res.ExpiresAt.Unix(),
 		"hold_seconds":    int(time.Until(res.ExpiresAt).Seconds()),
@@ -2325,6 +2411,7 @@ func (e *Engine) metricsMap() map[string]interface{} {
 		"confirmed":             atomic.LoadInt64(&e.confirmed),
 		"sold_out":              atomic.LoadInt64(&e.soldOut),
 		"multi_reserved":        atomic.LoadInt64(&e.multiReserved),
+		"transfers":             atomic.LoadInt64(&e.transfers),
 		"shortages":             atomic.LoadInt64(&e.shortages),
 		"errors":                atomic.LoadInt64(&e.errors),
 		"holds_created":         atomic.LoadInt64(&e.holdsCreated),
@@ -2820,6 +2907,7 @@ func main() {
 	http.HandleFunc("/reserve", sr.route((*Engine).handleReserve, true))
 	http.HandleFunc("/confirm", sr.scan((*Engine).handleConfirm, true))
 	http.HandleFunc("/release", sr.scan((*Engine).handleRelease, true))
+	http.HandleFunc("/transfer", sr.scan((*Engine).handleTransfer, true))
 	http.HandleFunc("/reservation", sr.scan((*Engine).handleReservation, false))
 	http.HandleFunc("/waitlist", sr.handleWaitlist)
 	http.HandleFunc("/waitlist/cancel", sr.scan((*Engine).handleWaitlistCancel, true))
