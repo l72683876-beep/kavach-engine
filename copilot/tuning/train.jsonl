@@ -1,0 +1,370 @@
+{"input": "concert-nov17 ke silver category me se 6 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"silver\",\"qty\":6}}"}
+{"input": "join waitlist for irctc-holiday-booking, 2 seats", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":2}}"}
+{"input": "4 tickets concert-nov17, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":4}}"}
+{"input": "reserve 6 vip seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"vip\",\"qty\":6}}"}
+{"input": "please book 4 seats for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":4}}"}
+{"input": "hold 5 tickets for flash-sale-tshirts, payment baad me", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":5}}"}
+{"input": "I want 3 seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":3}}"}
+{"input": "flash-sale-tshirts ke vip category me se 4 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"vip\",\"qty\":4}}"}
+{"input": "reserve 1 gold seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"gold\",\"qty\":1}}"}
+{"input": "how many vip seats left in irctc-holiday-booking?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"vip\"}}"}
+{"input": "please book 4 seats for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":4}}"}
+{"input": "sneaker-drop me vip category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"vip\"}}"}
+{"input": "kitne seats bache hain flash-sale-tshirts me?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "sneaker-drop ke liye availability dekho", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "irctc-holiday-booking ke gold category me se 1 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"gold\",\"qty\":1}}"}
+{"input": "newyear-gala ke liye 2 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":2}}"}
+{"input": "reserve 6 vip seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"vip\",\"qty\":6}}"}
+{"input": "gold tickets for flash-sale-tshirts, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"gold\"}}"}
+{"input": "book 1 general tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"general\",\"qty\":1}}"}
+{"input": "1 tickets concert-nov17, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":1}}"}
+{"input": "res-34931 ka hold hata do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-34931\"}}"}
+{"input": "newyear-gala me gold category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"gold\"}}"}
+{"input": "irctc-holiday-booking ke general category me se 2 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"general\",\"qty\":2}}"}
+{"input": "reserve 2 vip seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"vip\",\"qty\":2}}"}
+{"input": "how many vip seats left in concert-nov17?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"vip\"}}"}
+{"input": "reserve 4 general seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"general\",\"qty\":4}}"}
+{"input": "status", "output": "{\"tool\":null,\"clarify\":\"kiska status? reservation_id ya waitlist_id do.\"}"}
+{"input": "cancel waitlist wl-2891", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-2891\"}}"}
+{"input": "how many gold seats left in sneaker-drop?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"gold\"}}"}
+{"input": "sneaker-drop ke gold category me se 1 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"gold\",\"qty\":1}}"}
+{"input": "gold tickets for newyear-gala, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"gold\"}}"}
+{"input": "reserve 1 silver seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"silver\",\"qty\":1}}"}
+{"input": "3 tickets newyear-gala, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":3}}"}
+{"input": "book 10 tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":10}}"}
+{"input": "check availability for sneaker-drop", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "newyear-gala ke gold category me se 4 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"gold\",\"qty\":4}}"}
+{"input": "please book 3 seats for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":3}}"}
+{"input": "sneaker-drop me silver category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"silver\"}}"}
+{"input": "res-63354 ko confirm kar do", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-63354\"}}"}
+{"input": "I want 8 seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":8}}"}
+{"input": "sneaker-drop ke liye 8 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":8}}"}
+{"input": "res-28373 ka hold hata do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-28373\"}}"}
+{"input": "payment ho gayi, res-56438 confirm karo", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-56438\"}}"}
+{"input": "book 6 gold tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"gold\",\"qty\":6}}"}
+{"input": "flash-sale-tshirts ke silver category me se 1 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"silver\",\"qty\":1}}"}
+{"input": "buy 1 tickets for newyear-gala now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":1}}"}
+{"input": "put a hold on 5 seats for irctc-holiday-booking", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":5}}"}
+{"input": "res-70637 release kar do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-70637\"}}"}
+{"input": "newyear-gala me silver category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"silver\"}}"}
+{"input": "please book 6 seats for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":6}}"}
+{"input": "payment ho gayi, res-63883 confirm karo", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-63883\"}}"}
+{"input": "book 2 gold tickets for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"gold\",\"qty\":2}}"}
+{"input": "remove me from waitlist wl-3546", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-3546\"}}"}
+{"input": "book 1 silver tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"silver\",\"qty\":1}}"}
+{"input": "flash-sale-tshirts ke gold category me se 6 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"gold\",\"qty\":6}}"}
+{"input": "hi", "output": "{\"tool\":null,\"clarify\":\"Batao: seats check karne hain, book karna hai, ya waitlist? Event id ke saath batao.\"}"}
+{"input": "sneaker-drop ke gold category me se 2 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"gold\",\"qty\":2}}"}
+{"input": "book 2 vip tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"vip\",\"qty\":2}}"}
+{"input": "please book 3 seats for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":3}}"}
+{"input": "how many seats are left for sneaker-drop?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "10 tickets sneaker-drop, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":10}}"}
+{"input": "reserve 2 general seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"general\",\"qty\":2}}"}
+{"input": "seats status newyear-gala", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "put a hold on 3 seats for flash-sale-tshirts", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":3}}"}
+{"input": "please book 10 seats for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":10}}"}
+{"input": "flash-sale-tshirts ke liye availability dekho", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "irctc-holiday-booking me 2 seats temporarily hold karo", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":2}}"}
+{"input": "put a hold on 5 seats for concert-nov17", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":5}}"}
+{"input": "book 4 tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":4}}"}
+{"input": "where am I on wl-3584?", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-3584\"}}"}
+{"input": "book 4 gold tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"gold\",\"qty\":4}}"}
+{"input": "sneaker-drop ke liye 3 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":3}}"}
+{"input": "8 tickets newyear-gala, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":8}}"}
+{"input": "book 8 tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":8}}"}
+{"input": "buy 8 tickets for flash-sale-tshirts now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":8}}"}
+{"input": "confirm reservation res-54473", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-54473\"}}"}
+{"input": "please book 4 seats for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":4}}"}
+{"input": "2 tickets sneaker-drop, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":2}}"}
+{"input": "any tickets left in sneaker-drop?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "payment ho gayi, res-84847 confirm karo", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-84847\"}}"}
+{"input": "flash-sale-tshirts ke silver category me se 4 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"silver\",\"qty\":4}}"}
+{"input": "book 3 tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":3}}"}
+{"input": "kitne seats bache hain sneaker-drop me?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "book 4 vip tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"vip\",\"qty\":4}}"}
+{"input": "flash-sale-tshirts ke liye 3 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":3}}"}
+{"input": "irctc-holiday-booking ke liye 6 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":6}}"}
+{"input": "please book 2 seats for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":2}}"}
+{"input": "how many seats are left for flash-sale-tshirts?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "sneaker-drop waitlist 1 seats", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":1}}"}
+{"input": "seats status sneaker-drop", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "concert-nov17 me silver category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"silver\"}}"}
+{"input": "reserve 4 general seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"general\",\"qty\":4}}"}
+{"input": "am I still in queue wl-8491", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-8491\"}}"}
+{"input": "check availability for concert-nov17", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "book 6 tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":6}}"}
+{"input": "wl-6617 waitlist se hata do", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-6617\"}}"}
+{"input": "join waitlist for concert-nov17, 4 seats", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":4}}"}
+{"input": "flash-sale-tshirts me silver category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"silver\"}}"}
+{"input": "book 4 tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":4}}"}
+{"input": "res-22224 release kar do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-22224\"}}"}
+{"input": "sold out? add me to the newyear-gala waitlist for 2", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":2}}"}
+{"input": "please book 6 seats for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":6}}"}
+{"input": "reserve 2 silver seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"silver\",\"qty\":2}}"}
+{"input": "kya res-16572 confirm hua hai?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-16572\"}}"}
+{"input": "how many gold seats left in irctc-holiday-booking?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"gold\"}}"}
+{"input": "hold 5 for me", "output": "{\"tool\":null,\"clarify\":\"event_id chahiye. Kis event ke 5 seats hold karne hain?\"}"}
+{"input": "concert-nov17 me gold category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"gold\"}}"}
+{"input": "vip tickets for concert-nov17, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"vip\"}}"}
+{"input": "kitne seats bache hain newyear-gala me?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "book 6 silver tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"silver\",\"qty\":6}}"}
+{"input": "stock dekho irctc-holiday-booking ka", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "please book 4 seats for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":4}}"}
+{"input": "buy 1 tickets for flash-sale-tshirts now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":1}}"}
+{"input": "kitne seats bache hain irctc-holiday-booking me?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "put a hold on 1 seats for irctc-holiday-booking", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":1}}"}
+{"input": "gold price kya hai", "output": "{\"tool\":null,\"clarify\":\"pricing Kavach engine ka data nahi hai. Main availability aur booking dekh sakta hoon; event_id do.\"}"}
+{"input": "check availability for flash-sale-tshirts", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "please book 5 seats for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":5}}"}
+{"input": "please book 1 seats for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":1}}"}
+{"input": "silver tickets for sneaker-drop, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"silver\"}}"}
+{"input": "waitlist status for wl-5905", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-5905\"}}"}
+{"input": "reserve 2 vip seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"vip\",\"qty\":2}}"}
+{"input": "reserve 1 vip seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"vip\",\"qty\":1}}"}
+{"input": "what's the inventory on concert-nov17?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "sneaker-drop me gold category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"gold\"}}"}
+{"input": "irctc-holiday-booking ke general category me se 1 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"general\",\"qty\":1}}"}
+{"input": "please book 6 seats for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":6}}"}
+{"input": "how many seats are left for newyear-gala?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "am I still in queue wl-7054", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-7054\"}}"}
+{"input": "gold tickets for concert-nov17, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"gold\"}}"}
+{"input": "concert-nov17 ke liye 8 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":8}}"}
+{"input": "reserve 6 general seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"general\",\"qty\":6}}"}
+{"input": "please book 8 seats for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":8}}"}
+{"input": "stock dekho concert-nov17 ka", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "reserve 4 general seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"general\",\"qty\":4}}"}
+{"input": "I want 1 seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":1}}"}
+{"input": "I want 6 seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":6}}"}
+{"input": "4 tickets newyear-gala, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":4}}"}
+{"input": "where am I on wl-5351?", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-5351\"}}"}
+{"input": "reserve 6 silver seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"silver\",\"qty\":6}}"}
+{"input": "book 3 tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":3}}"}
+{"input": "irctc-holiday-booking ke liye 2 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":2}}"}
+{"input": "hold 1 tickets for concert-nov17, payment baad me", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":1}}"}
+{"input": "reserve 4 gold seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"gold\",\"qty\":4}}"}
+{"input": "wl-5325 cancel karo", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-5325\"}}"}
+{"input": "waitlist status for wl-8508", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-8508\"}}"}
+{"input": "reserve 1 gold seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"gold\",\"qty\":1}}"}
+{"input": "buy 5 tickets for flash-sale-tshirts now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":5}}"}
+{"input": "sneaker-drop me 3 seats temporarily hold karo", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":3}}"}
+{"input": "reserve 6 vip seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"vip\",\"qty\":6}}"}
+{"input": "concert-nov17 ke liye availability dekho", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "I want 6 seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":6}}"}
+{"input": "book 5 tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":5}}"}
+{"input": "sneaker-drop ke general category me se 6 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"general\",\"qty\":6}}"}
+{"input": "am I still in queue wl-3144", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-3144\"}}"}
+{"input": "stock dekho flash-sale-tshirts ka", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "book 1 general tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"general\",\"qty\":1}}"}
+{"input": "I want 4 seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":4}}"}
+{"input": "newyear-gala ke liye 10 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":10}}"}
+{"input": "vip tickets for newyear-gala, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"vip\"}}"}
+{"input": "8 tickets concert-nov17, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":8}}"}
+{"input": "kya res-65444 confirm hua hai?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-65444\"}}"}
+{"input": "how many seats are left for irctc-holiday-booking?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "silver tickets for flash-sale-tshirts, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"silver\"}}"}
+{"input": "stock dekho newyear-gala ka", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "book 6 silver tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"silver\",\"qty\":6}}"}
+{"input": "hold 2 tickets for newyear-gala, payment baad me", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":2}}"}
+{"input": "wl-2512 cancel karo", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-2512\"}}"}
+{"input": "flash-sale-tshirts me 1 seats temporarily hold karo", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":1}}"}
+{"input": "am I still in queue wl-3170", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-3170\"}}"}
+{"input": "book 2 tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":2}}"}
+{"input": "buy 6 tickets for newyear-gala now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":6}}"}
+{"input": "please book 1 seats for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":1}}"}
+{"input": "gold tickets for sneaker-drop, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"gold\"}}"}
+{"input": "book 4 general tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"general\",\"qty\":4}}"}
+{"input": "how many vip seats left in sneaker-drop?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"vip\"}}"}
+{"input": "confirm reservation res-22363", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-22363\"}}"}
+{"input": "book 2 tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":2}}"}
+{"input": "reserve 2 vip seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"vip\",\"qty\":2}}"}
+{"input": "how many silver seats left in irctc-holiday-booking?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"silver\"}}"}
+{"input": "book me tickets", "output": "{\"tool\":null,\"clarify\":\"event_id and quantity chahiye. Kaunsa event aur kitne tickets?\"}"}
+{"input": "I want 6 seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":6}}"}
+{"input": "confirm reservation res-17100", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-17100\"}}"}
+{"input": "how many silver seats left in sneaker-drop?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"silver\"}}"}
+{"input": "I want 3 seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":3}}"}
+{"input": "reserve 6 gold seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"gold\",\"qty\":6}}"}
+{"input": "how many left?", "output": "{\"tool\":null,\"clarify\":\"event_id chahiye. Kis event ke seats ginne hain?\"}"}
+{"input": "I want 3 seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":3}}"}
+{"input": "book 1 silver tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"silver\",\"qty\":1}}"}
+{"input": "how many gold seats left in concert-nov17?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"gold\"}}"}
+{"input": "res-17685 ka status dekho", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-17685\"}}"}
+{"input": "irctc-holiday-booking ke liye 3 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":3}}"}
+{"input": "sneaker-drop ke vip category me se 2 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"vip\",\"qty\":2}}"}
+{"input": "please book 8 seats for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":8}}"}
+{"input": "I want 2 seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":2}}"}
+{"input": "what's the status of res-17665?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-17665\"}}"}
+{"input": "res-48890 ka status dekho", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-48890\"}}"}
+{"input": "5 tickets newyear-gala, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":5}}"}
+{"input": "what's the status of res-17455?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-17455\"}}"}
+{"input": "please book 8 seats for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":8}}"}
+{"input": "irctc-holiday-booking ke liye 4 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":4}}"}
+{"input": "payment ho gayi, res-96374 confirm karo", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-96374\"}}"}
+{"input": "flash-sale-tshirts waitlist 2 seats", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":2}}"}
+{"input": "flash-sale-tshirts ki waitlist me 1 ke liye daal do", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":1}}"}
+{"input": "check availability for newyear-gala", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "reserve 6 general seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"general\",\"qty\":6}}"}
+{"input": "stock dekho sneaker-drop ka", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "newyear-gala ki waitlist me 4 ke liye daal do", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":4}}"}
+{"input": "res-19880 ka hold hata do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-19880\"}}"}
+{"input": "res-38016 ka hold hata do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-38016\"}}"}
+{"input": "flash-sale-tshirts ke liye 4 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":4}}"}
+{"input": "I want 10 seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":10}}"}
+{"input": "reserve 1 vip seats in flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"vip\",\"qty\":1}}"}
+{"input": "reserve 1 gold seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"gold\",\"qty\":1}}"}
+{"input": "silver tickets for concert-nov17, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"silver\"}}"}
+{"input": "flash-sale-tshirts me vip category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"vip\"}}"}
+{"input": "buy 10 tickets for concert-nov17 now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":10}}"}
+{"input": "book 8 tickets for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":8}}"}
+{"input": "what's the inventory on sneaker-drop?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\"}}"}
+{"input": "put a hold on 1 seats for newyear-gala", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":1}}"}
+{"input": "book 6 general tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"general\",\"qty\":6}}"}
+{"input": "kitne seats bache hain concert-nov17 me?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "res-38080 ko confirm kar do", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-38080\"}}"}
+{"input": "newyear-gala ke general category me se 1 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"general\",\"qty\":1}}"}
+{"input": "reserve 1 vip seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"vip\",\"qty\":1}}"}
+{"input": "cancel the hold res-34050", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-34050\"}}"}
+{"input": "res-30289 ka status dekho", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-30289\"}}"}
+{"input": "6 tickets flash-sale-tshirts, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":6}}"}
+{"input": "reserve 1 vip seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"vip\",\"qty\":1}}"}
+{"input": "sneaker-drop ke liye 10 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":10}}"}
+{"input": "am I still in queue wl-9288", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-9288\"}}"}
+{"input": "how many gold seats left in flash-sale-tshirts?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"gold\"}}"}
+{"input": "please book 5 seats for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":5}}"}
+{"input": "buy 2 tickets for sneaker-drop now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":2}}"}
+{"input": "book 4 vip tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"vip\",\"qty\":4}}"}
+{"input": "10 tickets concert-nov17, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":10}}"}
+{"input": "what's the status of res-59672?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-59672\"}}"}
+{"input": "wl-5616 waitlist se hata do", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-5616\"}}"}
+{"input": "newyear-gala ke liye 6 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":6}}"}
+{"input": "book 1 general tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"general\",\"qty\":1}}"}
+{"input": "is res-61173 still held?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-61173\"}}"}
+{"input": "sold out? add me to the sneaker-drop waitlist for 2", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":2}}"}
+{"input": "irctc-holiday-booking me silver category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"silver\"}}"}
+{"input": "what's the inventory on flash-sale-tshirts?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "any tickets left in concert-nov17?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "newyear-gala ke liye availability dekho", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "flash-sale-tshirts me gold category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"gold\"}}"}
+{"input": "reserve 6 vip seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"vip\",\"qty\":6}}"}
+{"input": "cancel waitlist wl-5533", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-5533\"}}"}
+{"input": "sold out? add me to the sneaker-drop waitlist for 4", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":4}}"}
+{"input": "buy 6 tickets for sneaker-drop now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":6}}"}
+{"input": "gold tickets for irctc-holiday-booking, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"gold\"}}"}
+{"input": "buy 4 tickets for newyear-gala now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":4}}"}
+{"input": "irctc-holiday-booking ke silver category me se 4 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"silver\",\"qty\":4}}"}
+{"input": "remove me from waitlist wl-3200", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-3200\"}}"}
+{"input": "concert-nov17 me vip category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"vip\"}}"}
+{"input": "I want 5 seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":5}}"}
+{"input": "buy 5 tickets for irctc-holiday-booking now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":5}}"}
+{"input": "how many silver seats left in concert-nov17?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"silver\"}}"}
+{"input": "book 1 tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":1}}"}
+{"input": "book 2 silver tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"silver\",\"qty\":2}}"}
+{"input": "put a hold on 3 seats for newyear-gala", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":3}}"}
+{"input": "flash-sale-tshirts ke liye 1 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":1}}"}
+{"input": "reserve 6 vip seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"vip\",\"qty\":6}}"}
+{"input": "refund my money", "output": "{\"tool\":null,\"clarify\":\"refund Kavach scope me nahi hai; release reservation support karta hoon. reservation_id do to hold release kar deta hoon.\"}"}
+{"input": "reserve 2 gold seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"gold\",\"qty\":2}}"}
+{"input": "3 tickets sneaker-drop, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":3}}"}
+{"input": "flash-sale-tshirts me 2 seats temporarily hold karo", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":2}}"}
+{"input": "cancel my booking", "output": "{\"tool\":null,\"clarify\":\"reservation_id ya waitlist_id chahiye. Kaunsa cancel karna hai?\"}"}
+{"input": "I want 5 seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":5}}"}
+{"input": "I want 10 seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":10}}"}
+{"input": "put a hold on 5 seats for sneaker-drop", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":5}}"}
+{"input": "concert-nov17 ke gold category me se 4 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"gold\",\"qty\":4}}"}
+{"input": "please book 10 seats for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":10}}"}
+{"input": "I want 2 seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":2}}"}
+{"input": "buy 5 tickets for newyear-gala now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":5}}"}
+{"input": "reserve 4 vip seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"vip\",\"qty\":4}}"}
+{"input": "res-73653 ka hold hata do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-73653\"}}"}
+{"input": "am I still in queue wl-9900", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-9900\"}}"}
+{"input": "I want 8 seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":8}}"}
+{"input": "book 2 gold tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"gold\",\"qty\":2}}"}
+{"input": "I want 4 seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":4}}"}
+{"input": "reserve 1 silver seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"silver\",\"qty\":1}}"}
+{"input": "sneaker-drop ke liye 1 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":1}}"}
+{"input": "book 4 silver tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"silver\",\"qty\":4}}"}
+{"input": "irctc-holiday-booking ke liye 8 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":8}}"}
+{"input": "silver tickets for irctc-holiday-booking, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"silver\"}}"}
+{"input": "payment ho gayi, res-41850 confirm karo", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-41850\"}}"}
+{"input": "cancel waitlist wl-5114", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-5114\"}}"}
+{"input": "release reservation res-82132", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-82132\"}}"}
+{"input": "waitlist status for wl-9666", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-9666\"}}"}
+{"input": "wl-2127 ka waitlist position kya hai?", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-2127\"}}"}
+{"input": "book 6 tickets for concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":6}}"}
+{"input": "book 4 silver tickets for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"silver\",\"qty\":4}}"}
+{"input": "book 2 general tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"general\",\"qty\":2}}"}
+{"input": "how many seats are left for concert-nov17?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "newyear-gala me 5 seats temporarily hold karo", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":5}}"}
+{"input": "any tickets left in irctc-holiday-booking?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "buy 10 tickets for flash-sale-tshirts now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":10}}"}
+{"input": "5 tickets concert-nov17, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":5}}"}
+{"input": "irctc-holiday-booking me 3 seats temporarily hold karo", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":3}}"}
+{"input": "please book 6 seats for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":6}}"}
+{"input": "payment ho gayi, res-17944 confirm karo", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-17944\"}}"}
+{"input": "reserve 1 vip seats in sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"vip\",\"qty\":1}}"}
+{"input": "book 4 gold tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"gold\",\"qty\":4}}"}
+{"input": "sneaker-drop ke liye 2 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":2}}"}
+{"input": "8 tickets sneaker-drop, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":8}}"}
+{"input": "flash-sale-tshirts ke gold category me se 2 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"gold\",\"qty\":2}}"}
+{"input": "payment ho gayi, res-46500 confirm karo", "output": "{\"tool\":\"confirm\",\"args\":{\"reservation_id\":\"res-46500\"}}"}
+{"input": "res-75909 ka status dekho", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-75909\"}}"}
+{"input": "what's the status of res-51104?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-51104\"}}"}
+{"input": "I want 1 seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":1}}"}
+{"input": "put a hold on 1 seats for sneaker-drop", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":1}}"}
+{"input": "join waitlist for flash-sale-tshirts, 4 seats", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":4}}"}
+{"input": "please book 1 seats for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":1}}"}
+{"input": "irctc-holiday-booking me gold category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"gold\"}}"}
+{"input": "any tickets left in flash-sale-tshirts?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "sneaker-drop ke liye 5 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":5}}"}
+{"input": "newyear-gala ke silver category me se 2 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"silver\",\"qty\":2}}"}
+{"input": "check seats", "output": "{\"tool\":null,\"clarify\":\"event_id chahiye. Kis event ki availability dekhni hai?\"}"}
+{"input": "book 6 silver tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"silver\",\"qty\":6}}"}
+{"input": "is res-69638 still held?", "output": "{\"tool\":\"reservation_status\",\"args\":{\"reservation_id\":\"res-69638\"}}"}
+{"input": "release reservation res-16630", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-16630\"}}"}
+{"input": "what's the inventory on newyear-gala?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "book 4 tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":4}}"}
+{"input": "book 4 tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":4}}"}
+{"input": "buy 10 tickets for newyear-gala now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":10}}"}
+{"input": "buy 5 tickets for concert-nov17 now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":5}}"}
+{"input": "irctc-holiday-booking ki waitlist me 1 ke liye daal do", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":1}}"}
+{"input": "buy 2 tickets for flash-sale-tshirts now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":2}}"}
+{"input": "please book 3 seats for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":3}}"}
+{"input": "book 10 tickets for irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":10}}"}
+{"input": "buy 10 tickets for sneaker-drop now", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":10}}"}
+{"input": "book 4 general tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"general\",\"qty\":4}}"}
+{"input": "concert-nov17 ke liye 6 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":6}}"}
+{"input": "flash-sale-tshirts ke liye 2 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":2}}"}
+{"input": "reserve 6 gold seats in irctc-holiday-booking", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"gold\",\"qty\":6}}"}
+{"input": "what's the inventory on irctc-holiday-booking?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "I want 5 seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":5}}"}
+{"input": "how many vip seats left in flash-sale-tshirts?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"vip\"}}"}
+{"input": "silver tickets for newyear-gala, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"silver\"}}"}
+{"input": "2 tickets irctc-holiday-booking, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":2}}"}
+{"input": "waitlist status for wl-2188", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-2188\"}}"}
+{"input": "join waitlist for concert-nov17, 2 seats", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":2}}"}
+{"input": "concert-nov17 ke silver category me se 2 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"silver\",\"qty\":2}}"}
+{"input": "book 5 tickets for sneaker-drop", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":5}}"}
+{"input": "concert-nov17 ke liye 3 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":3}}"}
+{"input": "seats status flash-sale-tshirts", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\"}}"}
+{"input": "reserve 4 silver seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"silver\",\"qty\":4}}"}
+{"input": "concert-nov17 ke liye 2 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":2}}"}
+{"input": "newyear-gala me vip category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"vip\"}}"}
+{"input": "book 5 tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":5}}"}
+{"input": "how many silver seats left in newyear-gala?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"silver\"}}"}
+{"input": "res-42591 release kar do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-42591\"}}"}
+{"input": "concert-nov17 ke gold category me se 6 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"gold\",\"qty\":6}}"}
+{"input": "soft reserve 2 for concert-nov17", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":2}}"}
+{"input": "please book 1 seats for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":1}}"}
+{"input": "how many silver seats left in flash-sale-tshirts?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"silver\"}}"}
+{"input": "concert-nov17 ki waitlist me 1 ke liye daal do", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":1}}"}
+{"input": "book 8 tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"qty\":8}}"}
+{"input": "join waitlist for irctc-holiday-booking, 4 seats", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":4}}"}
+{"input": "concert-nov17 ke liye 10 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":10}}"}
+{"input": "newyear-gala ke liye 1 ticket book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":1}}"}
+{"input": "seats status irctc-holiday-booking", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "2 tickets newyear-gala, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":2}}"}
+{"input": "1 tickets sneaker-drop, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":1}}"}
+{"input": "irctc-holiday-booking ke liye availability dekho", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "irctc-holiday-booking me vip category ki availability?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"vip\"}}"}
+{"input": "concert-nov17 ke general category me se 6 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"general\",\"qty\":6}}"}
+{"input": "vip tickets for sneaker-drop, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"sneaker-drop\",\"sku\":\"vip\"}}"}

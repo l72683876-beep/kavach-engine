@@ -1,0 +1,20 @@
+{"input": "what time is the concert?", "output": "{\"tool\":null,\"clarify\":\"event timing Kavach engine ka data nahi hai; main seats, booking, holds aur waitlist handle karta hoon.\"}"}
+{"input": "put a hold on 2 seats for sneaker-drop", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"sneaker-drop\",\"qty\":2}}"}
+{"input": "I want 3 seats in newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":3}}"}
+{"input": "check availability for irctc-holiday-booking", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\"}}"}
+{"input": "book 4 vip tickets for newyear-gala", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"vip\",\"qty\":4}}"}
+{"input": "how many gold seats left in newyear-gala?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"gold\"}}"}
+{"input": "newyear-gala ki waitlist me 1 ke liye daal do", "output": "{\"tool\":\"waitlist\",\"args\":{\"event_id\":\"newyear-gala\",\"qty\":1}}"}
+{"input": "any tickets left in newyear-gala?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\"}}"}
+{"input": "vip tickets for flash-sale-tshirts, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"vip\"}}"}
+{"input": "seats status concert-nov17", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"concert-nov17\"}}"}
+{"input": "soft reserve 3 for concert-nov17", "output": "{\"tool\":\"reserve\",\"args\":{\"event_id\":\"concert-nov17\",\"qty\":3}}"}
+{"input": "reserve 2 general seats in concert-nov17", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"concert-nov17\",\"sku\":\"general\",\"qty\":2}}"}
+{"input": "wl-2200 ka waitlist position kya hai?", "output": "{\"tool\":\"waitlist_status\",\"args\":{\"waitlist_id\":\"wl-2200\"}}"}
+{"input": "newyear-gala ke general category me se 2 book karo", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"general\",\"qty\":2}}"}
+{"input": "book 2 silver tickets for flash-sale-tshirts", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"flash-sale-tshirts\",\"sku\":\"silver\",\"qty\":2}}"}
+{"input": "remove me from waitlist wl-1058", "output": "{\"tool\":\"waitlist_cancel\",\"args\":{\"waitlist_id\":\"wl-1058\"}}"}
+{"input": "how many vip seats left in newyear-gala?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"newyear-gala\",\"sku\":\"vip\"}}"}
+{"input": "1 tickets irctc-holiday-booking, jaldi", "output": "{\"tool\":\"book\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"qty\":1}}"}
+{"input": "res-31798 ka hold hata do", "output": "{\"tool\":\"release\",\"args\":{\"reservation_id\":\"res-31798\"}}"}
+{"input": "vip tickets for irctc-holiday-booking, kitne hain?", "output": "{\"tool\":\"seats\",\"args\":{\"event_id\":\"irctc-holiday-booking\",\"sku\":\"vip\"}}"}
