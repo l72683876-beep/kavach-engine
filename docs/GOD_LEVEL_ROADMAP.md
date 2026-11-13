@@ -52,7 +52,13 @@ cluster-wide waitlist.
   all-or-nothing and the filter part of the idempotency fingerprint.
   Responses carry per-seat `seat_attrs`; a SKU without a layout rejects
   attribute requests.
-- Transfers and resale-lock on confirmed bookings.
+- [x] Transfers and resale-lock on confirmed bookings.
+  `POST /transfer {"reservation_id":"...","to_user":"..."}` hands a
+  CONFIRMED booking to another user (persist-before-ack WAL event,
+  replayed in order, so ownership survives restarts); an optional
+  `user_id` must match the current owner, `resale_lock: true` at reserve
+  time refuses every transfer with 409 `resale_locked`, and transferring
+  to the current owner is idempotent. Responses now carry `user_id`.
 
 ## 5. Ship discipline
 

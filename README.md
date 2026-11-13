@@ -117,6 +117,21 @@ the WAL and snapshots replay per SKU. The `-seats` inventory remains the
 default SKU and every v2.0 API is untouched. In this phase SKUs are
 node-local (multi-SKU holds are served by the receiving node only).
 
+### Transfers and resale lock (v2.4)
+
+A CONFIRMED booking can move to another user:
+
+```json
+POST /transfer
+{"reservation_id":"RSV00000001","user_id":"u1","to_user":"priya"}
+```
+
+Each transfer is a WAL event, so ownership survives restarts. Set
+`resale_lock: true` at reserve time to refuse every transfer (409
+`resale_locked`); without it the booking can move again and again (a
+resale). Transfers require the tenant key; an optional `user_id` must
+match the current owner.
+
 ## Quickstart (2 minutes)
 
 ```bash
