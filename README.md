@@ -132,6 +132,27 @@ Each transfer is a WAL event, so ownership survives restarts. Set
 resale). Transfers require the tenant key; an optional `user_id` must
 match the current owner.
 
+### Prometheus metrics (v2.3)
+
+`/metrics/prometheus` serves the same counters and gauges as the JSON
+`/metrics` endpoint in Prometheus text format 0.0.4, so a standard scrape
+config just works:
+
+```yaml
+scrape_configs:
+  - job_name: kavach
+    static_configs:
+      - targets: ["kavach:8080"]
+```
+
+Counters are `kavach_<name>_total` (received, holds_created, transfers,
+webhook_sent, ...), gauges are `kavach_in_flight`, `kavach_uptime_seconds`,
+`kavach_replication_connected` and `kavach_last_snapshot_age_seconds`, the
+replication role shows as `kavach_role_info{role="leader"}`, and latency
+percentiles export as `kavach_latency_ms{quantile="0.5|0.95|0.99"}` per
+shard with `kavach_latency_samples`. On multi-shard nodes counters sum
+across shards; percentiles stay per shard because percentiles do not sum.
+
 ## Quickstart (2 minutes)
 
 ```bash

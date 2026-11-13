@@ -2916,6 +2916,7 @@ func main() {
 	http.HandleFunc("/seats", sr.route((*Engine).handleSeats, false))
 	http.HandleFunc("/seats/state", sr.route((*Engine).handleSeatsState, false))
 	http.HandleFunc("/metrics", sr.handleMetrics)
+	http.HandleFunc("/metrics/prometheus", sr.handleMetricsProm)
 	mode := "local (auth off)"
 	if e.auth.enabled {
 		mode = "authenticated"

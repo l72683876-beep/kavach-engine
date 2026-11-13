@@ -30,7 +30,14 @@ cluster-wide waitlist.
 
 ## 3. v2.3: observability to the standard
 
-- Prometheus / OpenMetrics exposition on `/metrics`, latency histograms with labels.
+- [x] Prometheus exposition on `/metrics/prometheus` (text format 0.0.4): every
+  `/metrics` counter as `kavach_<name>_total`, gauges (`kavach_in_flight`,
+  `kavach_replication_connected`, `kavach_last_snapshot_age_seconds`,
+  `kavach_uptime_seconds`, `kavach_shards`), the replication role as
+  `kavach_role_info{role=...}`, and latency percentiles as
+  `kavach_latency_ms{quantile=...}` per shard (percentiles do not sum), plus
+  `kavach_latency_samples`. The JSON `/metrics` endpoint keeps its exact shape
+  for existing parsers.
 - Structured JSON logs with trace ids (tracing.go already carries them); optional
   OpenTelemetry export.
 
