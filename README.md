@@ -86,6 +86,27 @@ or the app hangs and users wait forever. Kavach is designed against those three 
 | Event log | Append-only JSONL of every booking | The durable record; the source of truth for audits |
 | Metrics | Counters + latency percentiles at `/metrics` | You cannot fix what you cannot see |
 
+## Multi-SKU holds (v2.4)
+
+One reservation can span several named inventories, all or nothing:
+
+```bash
+kavach-engine -seats 5000 -skus "vip=100,standard=250" &
+
+curl -X POST localhost:8080/reserve -d '{
+  "user_id": "u1",
+  "idempotency_key": "order-42",
+  "items": [{"sku": "vip", "count": 2}, {"sku": "standard", "count": 3}]
+}'
+```
+
+Any shortage rolls back every SKU already taken and returns
+`{"status":"sold_out","shortage":{"vip":2}}`, so a multi-SKU hold never
+lands partially. Confirm, release and expiry restore each SKU's own pool;
+the WAL and snapshots replay per SKU. The `-seats` inventory remains the
+default SKU and every v2.0 API is untouched. In this phase SKUs are
+node-local (multi-SKU holds are served by the receiving node only).
+
 ## Quickstart (2 minutes)
 
 ```bash

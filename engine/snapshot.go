@@ -48,6 +48,8 @@ type snapshotPayload struct {
 	Seats      []int32 `json:"seats"`
 	SeatOffset int     `json:"seat_offset"`
 
+	Skus map[string]snapInv `json:"skus,omitempty"` // v2.4 named SKU inventories
+
 	Reservations []snapReservation   `json:"reservations"`
 	ResIdem      map[string]string   `json:"res_idem,omitempty"`
 	Waitlist     []snapWaitEntry     `json:"waitlist"`
@@ -57,12 +59,19 @@ type snapshotPayload struct {
 	Rid          uint64              `json:"rid"`
 }
 
+// snapInv is one named SKU's inventory as captured.
+type snapInv struct {
+	Seats      []int32 `json:"seats"`
+	SeatOffset int     `json:"seat_offset"`
+}
+
 type snapReservation struct {
-	ID          string `json:"id"`
-	Tenant      string `json:"tenant"`
-	User        string `json:"user"`
-	Seats       []int  `json:"seats"`
-	State       int32  `json:"state"`
+	ID          string      `json:"id"`
+	Tenant      string      `json:"tenant"`
+	User        string      `json:"user"`
+	Seats       []int       `json:"seats"`
+	Items       []ItemAlloc `json:"items,omitempty"`
+	State       int32       `json:"state"`
 	Fingerprint string `json:"fingerprint,omitempty"`
 	CreatedAt   int64  `json:"created_at"`
 	ExpiresAt   int64  `json:"expires_at"`
@@ -105,13 +114,24 @@ func (e *Engine) capture() *snapshotPayload {
 	copy(p.Seats, e.inv.seats)
 	p.SeatOffset = e.inv.offset
 
+	e.skuMu.RLock()
+	if len(e.skus) > 0 {
+		p.Skus = make(map[string]snapInv, len(e.skus))
+		for name, si := range e.skus {
+			b := make([]int32, len(si.seats))
+			copy(b, si.seats)
+			p.Skus[name] = snapInv{Seats: b, SeatOffset: si.offset}
+		}
+	}
+	e.skuMu.RUnlock()
+
 	e.res.mu.Lock()
 	p.Reservations = make([]snapReservation, 0, len(e.res.m))
 	for _, r := range e.res.m {
 		seats := make([]int, len(r.Seats))
 		copy(seats, r.Seats)
 		p.Reservations = append(p.Reservations, snapReservation{
-			ID: r.ID, Tenant: r.Tenant, User: r.User, Seats: seats,
+			ID: r.ID, Tenant: r.Tenant, User: r.User, Seats: seats, Items: r.Items,
 			State: atomic.LoadInt32(&r.State), Fingerprint: r.Fingerprint,
 			CreatedAt: r.CreatedAt.UnixNano(), ExpiresAt: r.ExpiresAt.UnixNano(),
 			BookingID: r.BookingID,
@@ -275,11 +295,31 @@ func loadSnapshot(dir string) (int64, *snapshotPayload, bool) {
 // ---------- apply ----------
 
 func applySnapshot(p *snapshotPayload, inv *Inventory, res *ReservationStore,
-	wl *Waitlist, idem *IdemStore, bid, rid, wlSeq *uint64) {
+	wl *Waitlist, idem *IdemStore, bid, rid, wlSeq *uint64, skus map[string]*Inventory) {
 
 	inv.seats = make([]int32, len(p.Seats))
 	copy(inv.seats, p.Seats)
 	inv.offset = p.SeatOffset
+
+	for name := range skus {
+		delete(skus, name)
+	}
+	for name, si := range p.Skus {
+		ni := NewInventory(len(si.Seats), si.SeatOffset)
+		copy(ni.seats, si.Seats)
+		sold, held := int64(0), int64(0)
+		for _, st := range ni.seats {
+			switch st {
+			case seatSold:
+				sold++
+			case seatHeld:
+				held++
+			}
+		}
+		atomic.StoreInt64(&ni.sold, sold)
+		atomic.StoreInt64(&ni.held, held)
+		skus[name] = ni
+	}
 	var sold, held int64
 	for _, s := range inv.seats {
 		switch s {
@@ -297,7 +337,7 @@ func applySnapshot(p *snapshotPayload, inv *Inventory, res *ReservationStore,
 	res.idemIndex = make(map[string]string, len(p.ResIdem))
 	for _, sr := range p.Reservations {
 		r := &Reservation{
-			ID: sr.ID, Tenant: sr.Tenant, User: sr.User, Seats: sr.Seats,
+			ID: sr.ID, Tenant: sr.Tenant, User: sr.User, Seats: sr.Seats, Items: sr.Items,
 			Fingerprint: sr.Fingerprint,
 			CreatedAt:   time.Unix(0, sr.CreatedAt), ExpiresAt: time.Unix(0, sr.ExpiresAt),
 			BookingID: sr.BookingID,
@@ -403,13 +443,19 @@ func segmentPaths(base string, minSeq int64) []string {
 // snapshot sequence used (0 = none) and how many log lines were replayed.
 func recoverState(dir, bookBase, holdBase string, inv *Inventory, res *ReservationStore,
 	wl *Waitlist, idem *IdemStore, holdTTL time.Duration,
-	bid, rid, wlSeq *uint64) (int64, int, int, int, int) {
+	bid, rid, wlSeq *uint64, skus map[string]*Inventory) (int64, int, int, int, int) {
+	skuFor := func(name string) *Inventory {
+		if name == "" || name == "default" {
+			return inv
+		}
+		return skus[name]
+	}
 
 	seq, snap, ok := loadSnapshot(dir)
 	starts := map[string]int64{}
 	var paths []string
 	if ok {
-		applySnapshot(snap, inv, res, wl, idem, bid, rid, wlSeq)
+		applySnapshot(snap, inv, res, wl, idem, bid, rid, wlSeq, skus)
 		// The snapshot's offsets refer to the file that was live at capture
 		// time. After rotation that content lives in base.snap-<seq>;
 		// before rotation (a crash between snapshot and rotate) it is still
@@ -439,7 +485,7 @@ func recoverState(dir, bookBase, holdBase string, inv *Inventory, res *Reservati
 		paths = append(paths, segmentPaths(holdBase, 0)...)
 	}
 	paths = append(paths, bookBase, holdBase)
-	b, r, w, lines := replayLogsPaths(paths, inv, res, wl, idem, holdTTL, bid, rid, wlSeq, starts)
+	b, r, w, lines := replayLogsPaths(paths, inv, res, wl, idem, holdTTL, bid, rid, wlSeq, starts, skuFor)
 	return seq, b, r, w, lines
 }
 

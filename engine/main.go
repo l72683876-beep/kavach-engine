@@ -72,6 +72,18 @@ func NewInventory(n, offset int) *Inventory {
 	return &Inventory{seats: make([]int32, n), offset: offset}
 }
 
+// skuFor returns the inventory a SKU name names. An empty name or "default"
+// is the engine's original inventory, so every pre-2.4 path keeps working
+// unchanged; an unknown name returns nil and callers reject it.
+func (e *Engine) skuFor(name string) *Inventory {
+	if name == "" || name == "default" {
+		return e.inv
+	}
+	e.skuMu.RLock()
+	defer e.skuMu.RUnlock()
+	return e.skus[name]
+}
+
 // tryTake atomically locks n seats, or returns nil when not enough are free.
 // A compare-and-swap on each seat means two workers can never hold the same seat.
 func (inv *Inventory) tryTake(n int) []int {
@@ -498,16 +510,94 @@ func resStateName(s int32) string {
 	return "unknown"
 }
 
+// ItemAlloc is one SKU's slice of a reservation: which named inventory the
+// seats came from and which seat indices they hold. A pre-2.4 reservation
+// has Items nil and reads as one allocation on the default inventory.
+type ItemAlloc struct {
+	SKU   string `json:"sku"`
+	Seats []int  `json:"seats"`
+}
+
+// allocations returns the reservation's per-SKU allocation list, defaulting
+// a legacy reservation (Items nil) to its Seats on the default inventory.
+func (r *Reservation) allocations() []ItemAlloc {
+	if len(r.Items) > 0 {
+		return r.Items
+	}
+	if len(r.Seats) > 0 {
+		return []ItemAlloc{{SKU: "default", Seats: r.Seats}}
+	}
+	return nil
+}
+
 type Reservation struct {
 	ID          string
 	Tenant      string
 	User        string
 	Seats       []int
+	Items       []ItemAlloc // multi-SKU allocation (v2.4); nil = single default-SKU hold
 	State       int32 // atomic; CAS gives single-winner transitions
 	Fingerprint string
 	CreatedAt   time.Time
 	ExpiresAt   time.Time
 	BookingID   string
+}
+
+// itemReq is one line of a multi-SKU reservation request: how many of one
+// named inventory to hold.
+type itemReq struct {
+	SKU   string `json:"sku"`
+	Count int    `json:"count"`
+}
+
+// takeMulti reserves counts across several SKUs, all or nothing: SKUs are
+// taken in name order (a fixed order, so two multi-SKU buyers can never
+// deadlock holding each other's SKU), and any shortage gives back every
+// allocation already taken before the caller sees the shortage map. The
+// shortage map carries each requested SKU and its full requested count:
+// a multi-SKU hold never partially lands.
+func takeMulti(skuFor func(string) *Inventory, reqs []itemReq) ([]ItemAlloc, map[string]int) {
+	ordered := append([]itemReq(nil), reqs...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].SKU < ordered[j].SKU })
+	var taken []ItemAlloc
+	for _, rq := range ordered {
+		inv := skuFor(rq.SKU)
+		if inv == nil {
+			return nil, map[string]int{rq.SKU: rq.Count}
+		}
+		seats := inv.tryTake(rq.Count)
+		if seats == nil {
+			for _, t := range taken {
+				skuFor(t.SKU).release(t.Seats)
+			}
+			short := make(map[string]int, len(ordered))
+			for _, r := range ordered {
+				short[r.SKU] = r.Count
+			}
+			return nil, short
+		}
+		taken = append(taken, ItemAlloc{SKU: rq.SKU, Seats: seats})
+	}
+	return taken, nil
+}
+
+// commitAllocation applies a confirm to every SKU the reservation spans.
+func (e *Engine) commitAllocation(r *Reservation) {
+	for _, a := range r.allocations() {
+		if inv := e.skuFor(a.SKU); inv != nil {
+			inv.commit(a.Seats)
+		}
+	}
+}
+
+// releaseAllocation returns every SKU's hold to its own free pool
+// (cancel or expiry).
+func (e *Engine) releaseAllocation(r *Reservation) {
+	for _, a := range r.allocations() {
+		if inv := e.skuFor(a.SKU); inv != nil {
+			inv.release(a.Seats)
+		}
+	}
 }
 
 // transition returns true when this caller won the state change.
@@ -937,8 +1027,14 @@ func (g *GroupCommit) doRotate(suffix string) error {
 func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore,
 	wl *Waitlist, idem *IdemStore, holdTTL time.Duration,
 	bid, rid, waitlistSeq *uint64) (int, int, int) {
+	skuFor := func(name string) *Inventory {
+		if name == "" || name == "default" {
+			return inv
+		}
+		return nil
+	}
 	b, r, wq, _ := replayLogsPaths([]string{bookPath, holdPath}, inv, res, wl, idem,
-		holdTTL, bid, rid, waitlistSeq, nil)
+		holdTTL, bid, rid, waitlistSeq, nil, skuFor)
 	return b, r, wq
 }
 
@@ -948,7 +1044,7 @@ func replayLogs(bookPath, holdPath string, inv *Inventory, res *ReservationStore
 // is already inside a snapshot, so replaying it would double-apply state.
 func replayLogsPaths(paths []string, inv *Inventory, res *ReservationStore,
 	wl *Waitlist, idem *IdemStore, holdTTL time.Duration,
-	bid, rid, waitlistSeq *uint64, starts map[string]int64) (int, int, int, int) {
+	bid, rid, waitlistSeq *uint64, starts map[string]int64, skuFor func(string) *Inventory) (int, int, int, int) {
 
 	var events []replayEvent
 	lines := 0
@@ -978,7 +1074,7 @@ func replayLogsPaths(paths []string, inv *Inventory, res *ReservationStore,
 	sort.Slice(events, func(i, j int) bool { return events[i].ts < events[j].ts })
 
 	bookings, reservations, queued := applyReplayEvents(events, inv, res, wl, idem,
-		holdTTL, bid, rid, waitlistSeq)
+		holdTTL, bid, rid, waitlistSeq, skuFor)
 	return bookings, reservations, queued, lines
 }
 
@@ -995,6 +1091,8 @@ type job struct {
 
 type Engine struct {
 	inv          *Inventory
+	skus         map[string]*Inventory // named SKU inventories (v2.4); the -seats inventory stays the default
+	skuMu        sync.RWMutex
 	userLim      rateLimiter
 	ipLim        rateLimiter
 	globalLim    rateLimiter // shared cluster-wide budget (off by default)
@@ -1069,6 +1167,8 @@ type Engine struct {
 	waitQueued    int64
 	waitFulfilled int64
 	waitCancelled int64
+	multiReserved int64
+	shortages     int64
 	webhookSent   int64
 	webhookFailed int64
 	chaosStalls   int64
@@ -1081,10 +1181,14 @@ type Engine struct {
 // appendLog writes, flushes, and fsyncs the booking BEFORE the caller may
 // acknowledge it: persist-before-ack. A confirmed response means the record
 // is on disk.
-func (e *Engine) appendLog(id, key, tenant, user string, seats []int, fp string) {
-	line, _ := json.Marshal(map[string]interface{}{
+func (e *Engine) appendLog(id, key, tenant, user string, seats []int, fp string, items []ItemAlloc) {
+	rec := map[string]interface{}{
 		"booking_id": id, "key": key, "tenant": tenant, "user": user, "seats": seats, "fp": fp, "ts": time.Now().UnixNano(),
-	})
+	}
+	if len(items) > 0 {
+		rec["items"] = items
+	}
+	line, _ := json.Marshal(rec)
 	atomic.AddInt64(&e.eventsSince, 1)
 	e.bookGC.commit(string(line))
 }
@@ -1092,10 +1196,14 @@ func (e *Engine) appendLog(id, key, tenant, user string, seats []int, fp string)
 // appendHold records a reservation lifecycle event (reserved/confirmed/
 // released/expired) with the same persist-before-ack discipline.
 func (e *Engine) appendHold(event string, r *Reservation, bookingID string) {
-	line, _ := json.Marshal(map[string]interface{}{
+	rec := map[string]interface{}{
 		"event": event, "reservation_id": r.ID, "tenant": r.Tenant, "user": r.User,
 		"seats": r.Seats, "booking_id": bookingID, "expires_at": r.ExpiresAt.UnixNano(), "ts": time.Now().UnixNano(),
-	})
+	}
+	if len(r.Items) > 0 {
+		rec["items"] = r.Items
+	}
+	line, _ := json.Marshal(rec)
 	atomic.AddInt64(&e.eventsSince, 1)
 	e.holdGC.commit(string(line))
 }
@@ -1130,7 +1238,7 @@ func (e *Engine) process(j *job) {
 		return
 	}
 	id := fmt.Sprintf("BK%08d", atomic.AddUint64(&e.bid, 1))
-	e.appendLog(id, j.key, j.tenant, j.user, seats, j.fp) // durable BEFORE the ack leaves the process
+	e.appendLog(id, j.key, j.tenant, j.user, seats, j.fp, nil) // durable BEFORE the ack leaves the process
 	e.inv.commit(seats)
 	atomic.AddInt64(&e.confirmed, 1)
 	res := Result{Status: "confirmed", Seats: seats, BookingID: id}
@@ -1173,7 +1281,7 @@ func (e *Engine) expireSweep() {
 	now := time.Now()
 	for _, r := range e.res.expired(now) {
 		if r.transition(resHeld, resExpired) {
-			e.inv.release(r.Seats)
+			e.releaseAllocation(r)
 			atomic.AddInt64(&e.holdsExpired, 1)
 			e.appendHold("expired", r, "")
 		}
@@ -1672,19 +1780,59 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		User    string `json:"user_id"`
-		IdemKey string `json:"idempotency_key"`
-		Seats   int    `json:"seats"`
-		EventID string `json:"event_id"`
+		User    string    `json:"user_id"`
+		IdemKey string    `json:"idempotency_key"`
+		Seats   int       `json:"seats"`
+		Items   []itemReq `json:"items"`
+		EventID string    `json:"event_id"`
 	}
 	tenant, body, ok := e.precheck(w, r, &req)
 	if !ok {
 		return
 	}
 	defer atomic.AddInt64(&e.inFlight, -1)
-	if req.User == "" || strings.TrimSpace(req.IdemKey) == "" || req.Seats < 1 || req.Seats > 4 {
+	multi := len(req.Items) > 0
+	bad := func(why string) {
 		atomic.AddInt64(&e.errors, 1)
-		writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+		if why == "" {
+			writeJSON(w, http.StatusBadRequest, Result{Status: "bad_request"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"status": "bad_request", "error": why})
+	}
+	if multi {
+		// v2.4 multi-SKU hold: one idempotency key spans several named
+		// inventories, all or nothing. seats and items never mix.
+		if req.Seats != 0 {
+			bad("seats and items are exclusive")
+			return
+		}
+		if len(req.Items) > 8 {
+			bad("at most 8 SKUs per reservation")
+			return
+		}
+		seen := map[string]bool{}
+		for _, it := range req.Items {
+			if !validSKUName(it.SKU) {
+				bad("invalid sku name")
+				return
+			}
+			if it.Count < 1 || it.Count > 4 {
+				bad("count out of range")
+				return
+			}
+			if seen[it.SKU] {
+				bad("duplicate sku")
+				return
+			}
+			seen[it.SKU] = true
+			if e.skuFor(it.SKU) == nil {
+				bad("unknown sku: " + it.SKU)
+				return
+			}
+		}
+	} else if req.User == "" || strings.TrimSpace(req.IdemKey) == "" || req.Seats < 1 || req.Seats > 4 {
+		bad("")
 		return
 	}
 	if !e.userLim.Allow(tenant + ":" + req.User) { // layer 2: per user
@@ -1696,7 +1844,12 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 
 	// idempotent reserve: the same key returns the same reservation; the same
 	// key with a different payload is a conflict
-	fp := fpFor(req.IdemKey, req.User, req.Seats, eventOf(r, req.EventID))
+	var fp string
+	if multi {
+		fp = fpForItems(req.IdemKey, req.User, req.Items, eventOf(r, req.EventID))
+	} else {
+		fp = fpFor(req.IdemKey, req.User, req.Seats, eventOf(r, req.EventID))
+	}
 	if prev, found := e.res.byIdem(tenant, req.IdemKey); found {
 		if prev.Fingerprint != fp {
 			atomic.AddInt64(&e.conflicts, 1)
@@ -1707,6 +1860,47 @@ func (e *Engine) handleReserve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if multi {
+		// v2.4: take every SKU first, atomically; a shortage anywhere gives
+		// back everything and names the missing counts. In this phase a
+		// multi-SKU hold is served locally (no ring forwarding): per-SKU
+		// cluster sharding is the next milestone.
+		allocs, short := takeMulti(e.skuFor, req.Items)
+		if short != nil {
+			atomic.AddInt64(&e.shortages, 1)
+			writeJSON(w, http.StatusOK, map[string]interface{}{"status": "sold_out", "shortage": short})
+			return
+		}
+		mres := &Reservation{
+			ID:          fmt.Sprintf("RSV%08d", atomic.AddUint64(&e.rid, 1)),
+			Tenant:      tenant,
+			User:        req.User,
+			Items:       allocs,
+			Fingerprint: fp,
+			CreatedAt:   time.Now(),
+			ExpiresAt:   time.Now().Add(e.holdTTL),
+			State:       resHeld,
+		}
+		for _, a := range allocs { // the default SKU's seats also populate Seats, so legacy readers still see them
+			if a.SKU == "default" || a.SKU == "" {
+				mres.Seats = a.Seats
+			}
+		}
+		if !e.res.put(mres, req.IdemKey) {
+			e.releaseAllocation(mres)
+			if prev, found := e.res.byIdem(tenant, req.IdemKey); found {
+				e.writeReservation(w, http.StatusOK, prev)
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, Result{Status: "error"})
+			return
+		}
+		atomic.AddInt64(&e.multiReserved, 1)
+		atomic.AddInt64(&e.holdsCreated, 1)
+		e.appendHold("reserved", mres, "") // durable BEFORE the ack
+		e.writeReservation(w, http.StatusOK, mres)
+		return
+	}
 	seats := e.inv.tryTake(req.Seats)
 	if seats == nil {
 		atomic.AddInt64(&e.soldOut, 1)
@@ -1796,8 +1990,8 @@ func (e *Engine) handleConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	bookingID := fmt.Sprintf("BK%08d", atomic.AddUint64(&e.bid, 1))
 	res.BookingID = bookingID
-	e.appendLog(bookingID, "", res.Tenant, res.User, res.Seats, "") // durable BEFORE the ack
-	e.inv.commit(res.Seats)
+	e.appendLog(bookingID, "", res.Tenant, res.User, res.Seats, "", res.Items) // durable BEFORE the ack
+	e.commitAllocation(res)
 	atomic.AddInt64(&e.confirmed, 1)
 	atomic.AddInt64(&e.holdsConfirm, 1)
 	e.appendHold("confirmed", res, bookingID)
@@ -1843,7 +2037,7 @@ func (e *Engine) handleRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.transition(resHeld, resReleased) {
-		e.inv.release(res.Seats)
+		e.releaseAllocation(res)
 		atomic.AddInt64(&e.holdsRelease, 1)
 		e.appendHold("released", res, "")
 		e.writeReservation(w, http.StatusOK, res)
@@ -1887,14 +2081,18 @@ func (e *Engine) handleReservation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *Engine) writeReservation(w http.ResponseWriter, code int, res *Reservation) {
-	writeJSON(w, code, map[string]interface{}{
+	m := map[string]interface{}{
 		"status":          resStateName(atomic.LoadInt32(&res.State)),
 		"reservation_id":  res.ID,
 		"seats":           res.Seats,
 		"hold_expires_at": res.ExpiresAt.Unix(),
 		"hold_seconds":    int(time.Until(res.ExpiresAt).Seconds()),
 		"booking_id":      res.BookingID,
-	})
+	}
+	if len(res.Items) > 0 {
+		m["items"] = res.Items
+	}
+	writeJSON(w, code, m)
 }
 
 func (e *Engine) writeReservationState(w http.ResponseWriter, res *Reservation) {
@@ -1974,6 +2172,20 @@ func (e *Engine) handleSeatsState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *Engine) handleSeats(w http.ResponseWriter, r *http.Request) {
+	if skuName := r.URL.Query().Get("sku"); skuName != "" && skuName != "default" {
+		e.skuMu.RLock()
+		si := e.skus[skuName]
+		e.skuMu.RUnlock()
+		if si == nil {
+			writeJSON(w, http.StatusNotFound, map[string]interface{}{"status": "not_found"})
+			return
+		}
+		t, s, h := si.stats()
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"sku": skuName, "total": t, "sold": s, "held": h, "free": t - s - h,
+		})
+		return
+	}
 	total, sold, held := e.inv.stats()
 	local := map[string]int{"total": total, "sold": sold, "held": held, "free": total - sold - held}
 	if len(e.peers) <= 1 || r.URL.Query().Get("local") == "1" {
@@ -2038,6 +2250,8 @@ func (e *Engine) metricsMap() map[string]interface{} {
 		"in_flight":             atomic.LoadInt64(&e.inFlight),
 		"confirmed":             atomic.LoadInt64(&e.confirmed),
 		"sold_out":              atomic.LoadInt64(&e.soldOut),
+		"multi_reserved":        atomic.LoadInt64(&e.multiReserved),
+		"shortages":             atomic.LoadInt64(&e.shortages),
 		"errors":                atomic.LoadInt64(&e.errors),
 		"holds_created":         atomic.LoadInt64(&e.holdsCreated),
 		"holds_confirmed":       atomic.LoadInt64(&e.holdsConfirm),
@@ -2078,6 +2292,7 @@ func (e *Engine) metricsMap() map[string]interface{} {
 
 func main() {
 	seats := flag.Int("seats", 5000, "seats in inventory")
+	skusSpec := flag.String("skus", "", `v2.4 named SKU inventories, e.g. -skus "vip=100,standard=250"; the -seats inventory stays the default SKU`)
 	addr := flag.String("addr", ":8080", "listen address")
 	workers := flag.Int("workers", 16, "worker count")
 	shards := flag.Int("shards", 1, "multi-shard: number of independent event shards in this process, routed by event_id hash (1 = single pool)")
@@ -2245,6 +2460,34 @@ func main() {
 		perShardWorkers = 1
 	}
 	shardsList := make([]*Engine, nShards)
+	skuSpecs := map[string]int{}
+	if *skusSpec != "" {
+		for _, part := range strings.Split(*skusSpec, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) != 2 {
+				log.Fatalf("kavach: -skus wants name=count pairs, got %q", part)
+			}
+			name := strings.ToLower(strings.TrimSpace(kv[0]))
+			if name == "" || name == "default" {
+				log.Fatalf("kavach: -skus name %q is reserved", kv[0])
+			}
+			if !validSKUName(name) {
+				log.Fatalf("kavach: -skus name %q must be 1-32 chars of a-z 0-9 _ -", kv[0])
+			}
+			n, err := strconv.Atoi(strings.TrimSpace(kv[1]))
+			if err != nil || n < 1 {
+				log.Fatalf("kavach: -skus count for %s: %v", name, err)
+			}
+			skuSpecs[name] = n
+		}
+	}
+	if len(skuSpecs) > 0 && (len(peers) > 1 || nShards > 1) {
+		log.Printf("kavach: SKUs are node-local in this phase; each node and shard carries its own counts and multi-SKU holds are served locally only")
+	}
 	var sharedWl waitlistStore
 	if *redisAddr != "" { // v2.2: ONE FIFO line across every node
 		wlS, errW := newRedisWaitlist(*redisAddr, "kavach:wl")
@@ -2272,6 +2515,10 @@ func main() {
 		if nShards == 1 && len(peers) > 1 {
 			shardOffset = offset // the real per-peer slice offset computed above
 		}
+		skuMap := map[string]*Inventory{}
+		for name, n := range skuSpecs {
+			skuMap[name] = NewInventory(n, 0)
+		}
 		wlThis := waitlistStore(NewWaitlist())
 		wlSharedOn := false
 		if sharedWl != nil { // one shared line for every shard and peer
@@ -2280,6 +2527,7 @@ func main() {
 		}
 		e := &Engine{
 			inv:          NewInventory(*seats, shardOffset),
+			skus:         skuMap,
 			userLim:      userLim,
 			ipLim:        ipLim,
 			globalLim:    globalLim,
@@ -2317,7 +2565,7 @@ func main() {
 			wlForRecovery = NewWaitlist() // into scratch so the queue is never double-added
 		}
 		snapSeq, bRec, rRec, wRec, rLines := recoverState(snapDir, bookPath, holdPath,
-			e.inv, e.res, wlForRecovery, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+			e.inv, e.res, wlForRecovery, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq, e.skus)
 		atomic.StoreInt64(&e.recoveryLines, int64(rLines))
 		// snapshot numbering continues from disk: a fresh run must never
 		// overwrite a snapshot file that an older recovery path may still need

@@ -18,6 +18,7 @@ import (
 	"hash/fnv"
 	"io"
 	"net/http"
+	"sort"
 	"regexp"
 	"strings"
 )
@@ -94,6 +95,38 @@ func fpFor(key, user string, seats int, ev string) string {
 		ev = defaultEventID
 	}
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%s", key, user, seats, ev))))
+}
+
+// fpForItems builds the idempotency fingerprint of a multi-SKU reservation:
+// key, user, the canonical item list, and the event. The canonical form
+// sorts by SKU name, so two clients naming the same items in different
+// orders fingerprint the same reservation, and the event binding keeps a
+// multi-SKU key from replaying across events.
+func fpForItems(key, user string, items []itemReq, ev string) string {
+	if ev == "" {
+		ev = defaultEventID
+	}
+	ordered := append([]itemReq(nil), items...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].SKU < ordered[j].SKU })
+	parts := make([]string, len(ordered))
+	for i, it := range ordered {
+		parts[i] = fmt.Sprintf("%s:%d", it.SKU, it.Count)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%s", key, user, strings.Join(parts, ","), ev))))
+}
+
+// validSKUName allows 1-32 chars of lowercase letters, digits, underscore
+// and dash: a name a client can type and a WAL line can carry safely.
+func validSKUName(s string) bool {
+	if len(s) < 1 || len(s) > 32 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // readBodyBounded reads the request body once, bounded to a 16 KiB+1 routing

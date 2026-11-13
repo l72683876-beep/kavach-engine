@@ -38,10 +38,23 @@ type replayEvent struct {
 	tenant    string
 	user      string
 	seats     []int
+	items     []ItemAlloc
 	fp        string
 	wlID      string
 	wlSeats   int
 	expiresAt int64
+}
+
+// giAt reads an integer array field out of a decoded WAL map; it serves
+// both the top-level fields and nested item objects.
+func giAt(m map[string]interface{}, k string) []int {
+	arr, _ := m[k].([]interface{})
+	out := make([]int, 0, len(arr))
+	for _, v := range arr {
+		f, _ := v.(float64)
+		out = append(out, int(f))
+	}
+	return out
 }
 
 // parseReplayEvent decodes one WAL line into a replayEvent. Unknown or
@@ -53,12 +66,17 @@ func parseReplayEvent(line []byte) (replayEvent, bool) {
 	}
 	gs := func(k string) string { s, _ := m[k].(string); return s }
 	gf := func(k string) float64 { f, _ := m[k].(float64); return f }
-	gi := func(k string) []int {
+	gi := func(k string) []int { return giAt(m, k) }
+	gitems := func(k string) []ItemAlloc {
 		arr, _ := m[k].([]interface{})
-		out := make([]int, 0, len(arr))
+		out := make([]ItemAlloc, 0, len(arr))
 		for _, v := range arr {
-			f, _ := v.(float64)
-			out = append(out, int(f))
+			obj, _ := v.(map[string]interface{})
+			if obj == nil {
+				continue
+			}
+			sku, _ := obj["sku"].(string)
+			out = append(out, ItemAlloc{SKU: sku, Seats: giAt(obj, "seats")})
 		}
 		return out
 	}
@@ -66,7 +84,7 @@ func parseReplayEvent(line []byte) (replayEvent, bool) {
 		kind: gs("event"), ts: int64(gf("ts")), bookingID: gs("booking_id"),
 		resID: gs("reservation_id"), tenant: gs("tenant"), user: gs("user"),
 		userID: gs("user_id"),
-		seats:  gi("seats"), wlID: gs("waitlist_id"), wlSeats: int(gf("seats")),
+		seats:  gi("seats"), items: gitems("items"), wlID: gs("waitlist_id"), wlSeats: int(gf("seats")),
 		key: gs("key"), expiresAt: int64(gf("expires_at")), fp: gs("fp"),
 	}, true
 }
@@ -76,7 +94,7 @@ func parseReplayEvent(line []byte) (replayEvent, bool) {
 // it, so a follower is byte-for-byte the state machine its leader is.
 func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationStore,
 	wl *Waitlist, idem *IdemStore, holdTTL time.Duration,
-	bid, rid, waitlistSeq *uint64) (bookings, reservations, queued int) {
+	bid, rid, waitlistSeq *uint64, skuFor func(string) *Inventory) (bookings, reservations, queued int) {
 
 	idNum := func(id string) uint64 {
 		// strip the whole alphabetic prefix, not a fixed 2 chars: BK is 2
@@ -97,7 +115,15 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 	for _, ev := range events {
 		switch {
 		case ev.kind == "" && ev.bookingID != "": // a confirmed /book booking
-			inv.markSold(ev.seats)
+			if len(ev.items) > 0 { // v2.4 multi-SKU booking: mark each SKU's own seats; the default SKU is inside items, so ev.seats is never marked separately
+				for _, a := range ev.items {
+					if si := skuFor(a.SKU); si != nil {
+						si.markSold(a.Seats)
+					}
+				}
+			} else {
+				inv.markSold(ev.seats)
+			}
 			if idNum(ev.bookingID) > *bid {
 				*bid = idNum(ev.bookingID)
 			}
@@ -119,8 +145,16 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 				expires = time.Unix(0, ev.expiresAt)
 			}
 			res.put(&Reservation{ID: ev.resID, Tenant: ev.tenant, User: ev.user,
-				Seats: ev.seats, ExpiresAt: expires, State: resHeld}, "")
-			inv.markHeld(ev.seats)
+				Seats: ev.seats, Items: ev.items, ExpiresAt: expires, State: resHeld}, "")
+			if len(ev.items) > 0 {
+				for _, a := range ev.items {
+					if si := skuFor(a.SKU); si != nil {
+						si.markHeld(a.Seats)
+					}
+				}
+			} else {
+				inv.markHeld(ev.seats)
+			}
 			if idNum(ev.resID) > *rid {
 				*rid = idNum(ev.resID)
 			}
@@ -136,7 +170,15 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 			if r, ok := res.get(ev.resID); ok {
 				atomic.StoreInt32(&r.State, stateFromName[ev.kind])
 			}
-			inv.freeHeld(ev.seats)
+			if len(ev.items) > 0 {
+				for _, a := range ev.items {
+					if si := skuFor(a.SKU); si != nil {
+						si.freeHeld(a.Seats)
+					}
+				}
+			} else {
+				inv.freeHeld(ev.seats)
+			}
 		case ev.kind == "waitlisted":
 			owner := ev.user // waitlist events carry user_id, hold events carry user
 			if ev.userID != "" {
@@ -481,7 +523,7 @@ func (e *Engine) applyLocalTail(path string, pos *int64) {
 	if wlApply == nil { // shared Redis line: the queue is its own state, never re-add
 		wlApply = NewWaitlist()
 	}
-	applyReplayEvents(events, e.inv, e.res, wlApply, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+	applyReplayEvents(events, e.inv, e.res, wlApply, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq, e.skuFor)
 	*pos = newPos
 	atomic.AddInt64(&e.replicatedLines, int64(n))
 }

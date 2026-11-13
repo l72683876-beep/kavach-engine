@@ -36,7 +36,14 @@ cluster-wide waitlist.
 
 ## 4. v2.4: richer inventory
 
-- Multi-SKU atomic holds: one idempotent reservation spanning several items.
+- [x] Multi-SKU atomic holds: one idempotent reservation spanning several
+  items. `POST /reserve` accepts `items: [{sku, count}, ...]` (max 8 SKUs,
+  1-4 units each, seats and items exclusive): every SKU is taken in name
+  order and any shortage gives back everything before the caller sees a
+  `shortage` map. SKUs come from `-skus "vip=100,standard=250"`; the `-seats`
+  inventory stays the default SKU, every pre-2.4 path is untouched, and
+  confirm/release/expiry/WAL replay/snapshot all restore per SKU. In this
+  phase SKUs are node-local and multi-SKU holds are served locally only.
 - Attribute inventory: tier / row / section maps, not just counts.
 - Transfers and resale-lock on confirmed bookings.
 

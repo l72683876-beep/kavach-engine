@@ -47,7 +47,7 @@ func (h *snapshotHarness) restart(t *testing.T, seats int) {
 	e.bookGC, _ = NewGroupCommit(h.bookBase, 10000)
 	e.holdGC, _ = NewGroupCommit(h.holdBase, 10000)
 	snapSeq, b, r, w, lines := recoverState(h.dir, h.bookBase, h.holdBase,
-		e.inv, e.res, e.wl.(*Waitlist), e.idem, 60*time.Second, &e.bid, &e.rid, &waitlistSeq)
+		e.inv, e.res, e.wl.(*Waitlist), e.idem, 60*time.Second, &e.bid, &e.rid, &waitlistSeq, e.skus)
 	t.Logf("restart: snapshot=%d bookings=%d reservations=%d waitlist=%d tailLines=%d", snapSeq, b, r, w, lines)
 	if snapSeq > 0 {
 		if _, p, ok := loadSnapshot(h.dir); ok {
@@ -87,7 +87,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	e := h.e
 
 	// live traffic: two bookings, one hold, one waitlist entry
-	e.appendLog("BK000001", "k1", "tenant1", "userA", []int{0, 1}, "")
+	e.appendLog("BK000001", "k1", "tenant1", "userA", []int{0, 1}, "", nil)
 	e.inv.markSold([]int{0, 1})
 	if _, known, _ := e.idem.claim("tenant1", "k1", ""); known {
 		t.Fatal("k1 unexpectedly claimed")
@@ -120,7 +120,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 
 	// post-snapshot traffic: a booking and a confirm land AFTER the snapshot,
 	// so recovery must pick them up from the tail
-	e.appendLog("BK000002", "k2", "tenant1", "userD", []int{10}, "")
+	e.appendLog("BK000002", "k2", "tenant1", "userD", []int{10}, "", nil)
 	e.inv.markSold([]int{10})
 	e.idem.finish("tenant1", "k2", Result{Status: "confirmed", Seats: []int{10}, BookingID: "BK000002"})
 	if wantRes.transition(resHeld, resConfirmed) {
@@ -168,7 +168,7 @@ func TestCrashBetweenSnapshotAndRotate(t *testing.T) {
 	defer h.close()
 	e := h.e
 
-	e.appendLog("BK000001", "k1", "t", "u", []int{0}, "")
+	e.appendLog("BK000001", "k1", "t", "u", []int{0}, "", nil)
 	e.inv.markSold([]int{0})
 
 	// take a snapshot the hard way, WITHOUT rotating: simulate the process
@@ -187,7 +187,7 @@ func TestCrashBetweenSnapshotAndRotate(t *testing.T) {
 	}
 
 	// more traffic after the snapshot, still in the un-rotated live log
-	e.appendLog("BK000002", "k2", "t", "u", []int{1}, "")
+	e.appendLog("BK000002", "k2", "t", "u", []int{1}, "", nil)
 	e.inv.markSold([]int{1})
 	final := seatStates(e)
 	h.close()
@@ -202,12 +202,12 @@ func TestCorruptSnapshotFallsBackToFullReplay(t *testing.T) {
 	defer h.close()
 	e := h.e
 
-	e.appendLog("BK000001", "k1", "t", "u", []int{0}, "")
+	e.appendLog("BK000001", "k1", "t", "u", []int{0}, "", nil)
 	e.inv.markSold([]int{0})
 	if err := e.runSnapshot(); err != nil {
 		t.Fatal(err)
 	}
-	e.appendLog("BK000002", "k2", "t", "u", []int{1}, "")
+	e.appendLog("BK000002", "k2", "t", "u", []int{1}, "", nil)
 	e.inv.markSold([]int{1})
 	final := seatStates(e)
 	h.close()
@@ -281,7 +281,7 @@ func TestConcurrentTrafficUnderSnapshot(t *testing.T) {
 				if _, known, conflict := e.idem.claim("t", key, ""); !known && !conflict {
 					e.idem.finish("t", key, Result{Status: "confirmed", Seats: seats, BookingID: id2})
 				}
-				e.appendLog(id2, key, "t", fmt.Sprintf("u%d", id), seats, "")
+				e.appendLog(id2, key, "t", fmt.Sprintf("u%d", id), seats, "", nil)
 				e.freeze.RUnlock()
 			}
 		}(w)

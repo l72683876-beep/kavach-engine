@@ -28,7 +28,7 @@ func newReplEngine(t *testing.T, dir string, seats int) *Engine {
 	e.bookGC, _ = NewGroupCommit(dir+"/bookings.jsonl", 10000)
 	e.holdGC, _ = NewGroupCommit(dir+"/holds.jsonl", 10000)
 	recoverState(dir, e.bookGC.path, e.holdGC.path,
-		e.inv, e.res, e.wl.(*Waitlist), e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+		e.inv, e.res, e.wl.(*Waitlist), e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq, e.skus)
 	return e
 }
 
@@ -43,7 +43,7 @@ func driveTraffic(t *testing.T, e *Engine, bookings, holds int) int {
 		if _, known, conflict := e.idem.claim("t", key, ""); !known && !conflict {
 			e.idem.finish("t", key, Result{Status: "confirmed", Seats: []int{i % 100}, BookingID: id})
 		}
-		e.appendLog(id, key, "t", "u", []int{i % 100}, "")
+		e.appendLog(id, key, "t", "u", []int{i % 100}, "", nil)
 		e.freeze.RUnlock()
 		lines++
 	}
