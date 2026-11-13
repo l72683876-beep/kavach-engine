@@ -13,6 +13,8 @@ import urllib.request
 
 from flask import Flask, jsonify, request
 
+import anomaly
+
 ENGINE_URL = os.environ.get("KAVACH_URL", "http://localhost:8080")
 KAVACH_API_KEY = os.environ.get("KAVACH_API_KEY", "")
 WATSONX_PROXY_URL = os.environ.get("WATSONX_PROXY_URL", "https://watsonx-auth-proxy.onrender.com")
@@ -223,8 +225,44 @@ def ask():
         return jsonify({"question": q, "tool": "none",
                         "answer": str(decision.get("answer", ""))[:500]})
     result = run_tool(decision.get("tool"), decision.get("args") or {})
+    anomaly.record(decision.get("tool"), decision.get("args") or {})
     return jsonify({"question": q, "tool": decision.get("tool"),
                     "engine": result, "answer": phrase(decision.get("tool"), result)})
+
+
+@app.post("/anomaly")
+def anomaly_check():
+    """Pattern score for one user, from the copilot's own recorded tool calls.
+    Pure-local heuristics; narration needs an explicit narrate flag."""
+    payload = request.get_json(silent=True) or {}
+    r = anomaly.score(payload.get("user_id"))
+    out = dict(r)
+    if IBM_API_KEY and WATSONX_PROJECT_ID and payload.get("narrate"):
+        text, err = anomaly.narrate(anomaly.pattern_messages(r), granite)
+        out["narration"] = text
+        if err is not None:
+            out["narration_error"] = err
+    return jsonify(out)
+
+
+@app.get("/anomaly/metrics")
+def anomaly_metrics():
+    """The engine's own /metrics, optionally narrated by Granite into plain
+    incident notes. Numbers come only from the engine's snapshot."""
+    headers = {"Accept": "application/json"}
+    if KAVACH_API_KEY:
+        headers["Authorization"] = "Bearer " + KAVACH_API_KEY
+    _status, metrics = _http("GET", ENGINE_URL.rstrip("/") + "/metrics", headers)
+    out = {"engine_metrics_status": _status}
+    if isinstance(metrics, dict):
+        out["metrics"] = metrics
+        if IBM_API_KEY and WATSONX_PROJECT_ID:
+            text, err = anomaly.narrate(
+                anomaly.metrics_messages(json.dumps(metrics)), granite)
+            out["narration"] = text
+            if err is not None:
+                out["narration_error"] = err
+    return jsonify(out)
 
 
 if __name__ == "__main__":

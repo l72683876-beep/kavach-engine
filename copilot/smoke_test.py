@@ -68,6 +68,40 @@ class Tests(unittest.TestCase):
         self.assertEqual(d["tool"], "reserve")
         self.assertIsNone(copilot.parse_decision("no json here"))
 
+    def test_anomaly_normal_then_burst(self):
+        import anomaly
+        anomaly._events.clear()
+        for _ in range(2):
+            anomaly.record("reserve", {"user_id": "sha", "seats": 2})
+        r = anomaly.score("sha")
+        self.assertEqual(r["verdict"], "normal")
+        self.assertEqual(r["writes_1h"], 2)
+        anomaly._events.clear()
+        for _ in range(6):
+            anomaly.record("reserve", {"user_id": "bot", "seats": 10})
+        r = anomaly.score("bot")
+        self.assertIn("burst", " ".join(r["flags"]))
+        self.assertIn("max_seat_storm", " ".join(r["flags"]))
+        self.assertIn(r["verdict"], ("suspicious", "abusive"))
+
+    def test_anomaly_churn_flag(self):
+        import anomaly
+        anomaly._events.clear()
+        for _ in range(3):
+            anomaly.record("release", {"user_id": "churner"})
+            anomaly.record("reserve", {"user_id": "churner", "seats": 1})
+        anomaly.record("confirm", {"user_id": "churner", "reservation_id": "RSV1"})
+        r = anomaly.score("churner")
+        self.assertIn("churn", " ".join(r["flags"]))
+
+    def test_anomaly_line_only_real_numbers(self):
+        import anomaly
+        r = {"user_id": "u", "verdict": "normal", "events_1h": 3,
+             "writes_1h": 2, "score": 0, "flags": []}
+        line = anomaly.summary_line(r)
+        self.assertIn("normal", line)
+        self.assertIn("flags: none", line)
+
 
 if __name__ == "__main__":
     unittest.main()

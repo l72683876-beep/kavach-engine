@@ -32,6 +32,23 @@ GET  /       tiny demo page
 - The IBM key never leaves the server's environment.
 - Payment, pricing and user verification stay in YOUR application, as with Kavach itself.
 
+## Anomaly layer (local heuristics + Granite narration)
+
+`anomaly.py` scores each user's recent copilot tool calls with pure-local
+heuristics (write rate, bursts, max-seat storms, hold/release churn). It never
+blocks an engine call; it reports. Endpoints:
+
+```
+POST /anomaly          {"user_id": "priya"}            -> score, verdict, flags
+POST /anomaly          {"user_id": "priya", "narrate": true}
+                                                        -> + Granite's 2-sentence read
+GET  /anomaly/metrics  (Granite turns the engine's own /metrics snapshot
+                        into plain-language incident notes, if configured)
+```
+
+Every count comes from recorded copilot activity or the engine's snapshot; the
+narrator is told to use only those numbers.
+
 ## Test
 
 `python3 smoke_test.py` exercises the plumbing against a stub engine with scripted

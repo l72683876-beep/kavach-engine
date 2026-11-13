@@ -389,6 +389,15 @@ shows two sustained rounds, 1,000,000 and 2,000,000 requests (~18 minutes of con
 pressure, peak 3,077 req/s on a 2-core box, 0 errors, 0 double-sell). Details and honest
 caveats in [demo/README.md](demo/README.md).
 
+## AI layer: Kavach Copilot (IBM Granite)
+
+Natural language in, real engine calls out. `copilot/` runs a Granite-powered
+layer that translates one request into at most one engine call, with a tool
+allow-list, seat clamping, and one rule: every number in a reply comes from the
+engine, never the model. A local anomaly layer scores each user's recent
+activity and Granite turns metrics snapshots into plain-language incident notes.
+See `copilot/README.md` and `docs/RELEASE_NOTES_GRANITE.md`.
+
 ## Reproducible benchmark run (Oct 15, 2026)
 
 This run used this repository's engine with `sim/simulate.py` and `sim/verify.py` on a
