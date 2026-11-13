@@ -291,6 +291,17 @@ waitlist needs the shared-state milestone); `/metrics` is local; a forwarded req
 skips the peer's IP limiter (it was already limited at the entry node) while still
 passing full auth verification, so keep `-peers` on a private network.
 
+## Shared rate limiting across nodes (v2.2, started)
+
+One sale, many nodes: every node's in-memory buckets are its own budget, so a
+client could buy N rate limits by writing to N nodes. Build with
+`go build -tags redis`, run with `-redis redis://host:6379`, and the per-user,
+per-IP and global token buckets move into Redis behind one atomic Lua script:
+ONE budget across every node. In-memory buckets stay the zero-dependency
+default, and if Redis goes down mid-sale the limiter fails open rather than
+taking the sale down. The cluster-wide FIFO waitlist is the second half of
+v2.2, in progress.
+
 ## Postgres write-behind (v2.1)
 
 The local append-only logs stay the source of truth. A booking is acknowledged

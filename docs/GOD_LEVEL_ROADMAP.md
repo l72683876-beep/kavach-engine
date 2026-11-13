@@ -13,15 +13,20 @@ dependency-free by default, and every claim is measured, never claimed.
   notes, so a small team can run a big sale.
 - **NL configuration**: describe a sale in a sentence, get a checked KCL file.
 
-## 2. v2.2: shared-state mode (Redis)
+## 2. v2.2: shared-state mode (Redis) — IN PROGRESS
 
 Closes the two limits on the record in the README: global rate limiting and a
 cluster-wide waitlist.
 
-- Optional Redis-backed token buckets (per-user, per-key, global) shared across
-  nodes; in-memory buckets remain the zero-dependency default.
-- Cluster-wide FIFO waitlist with cross-node promotion, preserving the
-  front-of-line fairness rule exactly as single-node does today.
+- [x] Optional Redis-backed token buckets (per-user, per-IP, global) shared
+  across nodes behind one atomic Lua script (build tag `redis`, flag `-redis`);
+  in-memory buckets remain the zero-dependency default, and a Redis outage
+  fails open (the shared limiter must never take the sale down).
+- [ ] Cluster-wide FIFO waitlist with cross-node promotion, preserving the
+  front-of-line fairness rule exactly as single-node does today. In progress:
+  the queue state moves to Redis lists so any node that frees seats serves the
+  front of the shared line; replay and snapshot coupling needs its own battery
+  phase before it ships.
 
 ## 3. v2.3: observability to the standard
 

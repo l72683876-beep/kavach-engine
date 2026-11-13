@@ -226,6 +226,13 @@ func NewLimiter(rate, burst float64) *Limiter {
 	return &Limiter{rate: rate, burst: burst, bucket: make(map[string]*bucket)}
 }
 
+// rateLimiter is what every rate-limit layer must answer. The in-memory
+// Limiter is the zero-dependency default; RedisLimiter (build tag redis)
+// shares one bucket budget across every node of a cluster.
+type rateLimiter interface {
+	Allow(key string) bool
+}
+
 func (l *Limiter) Allow(key string) bool {
 	if l.rate <= 0 { // 0 disables this layer
 		return true
@@ -955,8 +962,9 @@ type job struct {
 
 type Engine struct {
 	inv          *Inventory
-	userLim      *Limiter
-	ipLim        *Limiter
+	userLim      rateLimiter
+	ipLim        rateLimiter
+	globalLim    rateLimiter // shared cluster-wide budget (off by default)
 	auth         *Auth
 	idem         *IdemStore
 	res          *ReservationStore
@@ -1011,6 +1019,7 @@ type Engine struct {
 
 	received      int64
 	ipLimited     int64
+	globalLimited int64
 	userLimited   int64
 	overloaded    int64
 	authFailures  int64
@@ -1465,11 +1474,22 @@ func (e *Engine) precheck(w http.ResponseWriter, r *http.Request, dst interface{
 	// from a configured peer's connection; a client-set header never skips
 	// the check. Shard probes are set in-process after the wrappers strip
 	// any client-set value, so they stay header-gated.
-	if skip := (r.Header.Get("X-Kavach-Forwarded-By") != "" && e.fromPeer(r)) || r.Header.Get("X-Kavach-Shard-Probe") != ""; !skip && !e.ipLim.Allow(e.clientIP(r)) {
-		atomic.AddInt64(&e.ipLimited, 1)
-		w.Header().Set("Retry-After", "2")
-		writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
-		return "", nil, false
+	// the shared global budget (v2.2, off unless -global-rate is set) and the
+	// per-IP layer are skipped for the same reason together: a forwarded
+	// request was already counted once, at the edge node.
+	if skip := (r.Header.Get("X-Kavach-Forwarded-By") != "" && e.fromPeer(r)) || r.Header.Get("X-Kavach-Shard-Probe") != ""; !skip {
+		if e.globalLim != nil && !e.globalLim.Allow("global") {
+			atomic.AddInt64(&e.globalLimited, 1)
+			w.Header().Set("Retry-After", "2")
+			writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
+			return "", nil, false
+		}
+		if !e.ipLim.Allow(e.clientIP(r)) {
+			atomic.AddInt64(&e.ipLimited, 1)
+			w.Header().Set("Retry-After", "2")
+			writeJSON(w, http.StatusTooManyRequests, Result{Status: "rate_limited"})
+			return "", nil, false
+		}
 	}
 	if n := atomic.AddInt64(&e.inFlight, 1); n > 500000 { // global capacity gate
 		atomic.AddInt64(&e.inFlight, -1)
@@ -1911,6 +1931,7 @@ func (e *Engine) metricsMap() map[string]interface{} {
 		"received":              atomic.LoadInt64(&e.received),
 		"rate_limited":          atomic.LoadInt64(&e.userLimited) + atomic.LoadInt64(&e.ipLimited),
 		"ip_rate_limited":       atomic.LoadInt64(&e.ipLimited),
+		"global_rate_limited":   atomic.LoadInt64(&e.globalLimited),
 		"user_rate_limited":     atomic.LoadInt64(&e.userLimited),
 		"auth_failures":         atomic.LoadInt64(&e.authFailures),
 		"replays_rejected":      atomic.LoadInt64(&e.replays),
@@ -1987,6 +2008,9 @@ func main() {
 	snapshotInterval := flag.Int("snapshot-interval", 0, "WAL snapshots: also snapshot after this many seconds with new events (0 = off; -snapshot-every alone also works)")
 	ipRate := flag.Float64("ip-rate", 20, "per-IP requests/second (0 disables)")
 	ipBurst := flag.Float64("ip-burst", 40, "per-IP burst")
+	globalRate := flag.Float64("global-rate", 0, "cluster-wide global requests/second across ALL nodes, one shared budget (0 = off; needs -redis)")
+	globalBurst := flag.Float64("global-burst", 0, "cluster-wide global burst")
+	redisAddr := flag.String("redis", "", "Redis address (redis://host:6379) for shared token buckets: ONE rate budget across every node (needs: go build -tags redis; empty = per-node in-memory, zero-dependency)")
 	cfgPath := flag.String("config", "", "path to a Kavach config file (.kcl) to describe the sale; explicit CLI flags override it")
 	flag.Parse()
 
@@ -2095,8 +2119,27 @@ func main() {
 	// shared across shards: one auth table, one idempotency store, one rate
 	// limit budget per tenant and per IP. Splitting these would let a client
 	// buy four rate limits by writing four event ids.
-	userLim := NewLimiter(*userRate, *userBurst)
-	ipLim := NewLimiter(*ipRate, *ipBurst)
+	var userLim rateLimiter = NewLimiter(*userRate, *userBurst)
+	var ipLim rateLimiter = NewLimiter(*ipRate, *ipBurst)
+	var globalLim rateLimiter = NewLimiter(*globalRate, *globalBurst)
+	if *redisAddr != "" { // v2.2: ONE rate budget across every node
+		ul, errU := newRedisLimiter(*redisAddr, "kavach:user", *userRate, *userBurst)
+		il, errI := newRedisLimiter(*redisAddr, "kavach:ip", *ipRate, *ipBurst)
+		gl, errG := newRedisLimiter(*redisAddr, "kavach:global", *globalRate, *globalBurst)
+		if errU == nil && errI == nil && errG == nil {
+			userLim, ipLim, globalLim = ul, il, gl
+			log.Printf("shared token buckets on %s: one rate budget across every node", *redisAddr)
+		} else {
+			fallback := errU
+			if fallback == nil {
+				fallback = errI
+			}
+			if fallback == nil {
+				fallback = errG
+			}
+			log.Printf("kavach: -redis set but the shared buckets did not start (%v); per-node in-memory buckets stay on", fallback)
+		}
+	}
 	auth := newAuthWithTenantSecrets(*apiKeys, *secret, *tenantSecrets)
 	idem := NewIdemStore()
 	perShardWorkers := *workers / nShards
@@ -2125,6 +2168,7 @@ func main() {
 			inv:          NewInventory(*seats, shardOffset),
 			userLim:      userLim,
 			ipLim:        ipLim,
+			globalLim:    globalLim,
 			auth:         auth,
 			idem:         idem,
 			res:          NewReservationStore(),

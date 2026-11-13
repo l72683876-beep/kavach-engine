@@ -55,6 +55,9 @@ sleep 2
 python3 sdk/test_sdks.py && ok "sdk python (11 checks)" || fail "sdk python"
 kill $E 2>/dev/null; wait $E 2>/dev/null
 
+step "Shared token buckets (v2.2, -tags redis)"
+(cd engine && go test -race -tags redis -run 'Redis|Limiters' .) && ok "redis shared limiter (6 checks)" || fail "redis shared limiter"
+
 if [ "${1:-}" = "--full" ]; then
   step "Full extras (chaos, recovery, cluster, crash)"
   # the sim scripts Popen with cwd="engine" themselves, so run them from the repo root
