@@ -286,8 +286,7 @@ How it works, and why there is still no double-sell:
 - **`/seats` becomes the cluster view**: the same total/sold/held/free shape, summed
   across nodes, plus a per-node breakdown (`/seats?local=1` stays local).
 
-Known limits, on the record: waitlist and per-user rate limits are per-node (a global
-waitlist needs the shared-state milestone); `/metrics` is local; a forwarded request
+Known limits, on the record: `/metrics` is local; a forwarded request
 skips the peer's IP limiter (it was already limited at the entry node) while still
 passing full auth verification, so keep `-peers` on a private network.
 
@@ -299,8 +298,20 @@ client could buy N rate limits by writing to N nodes. Build with
 per-IP and global token buckets move into Redis behind one atomic Lua script:
 ONE budget across every node. In-memory buckets stay the zero-dependency
 default, and if Redis goes down mid-sale the limiter fails open rather than
-taking the sale down. The cluster-wide FIFO waitlist is the second half of
-v2.2, in progress.
+taking the sale down.
+
+**Part 2, the same `-redis` flag: the waitlist goes cluster-wide too.** Until now
+the waitlist was per-node: queue on node A, and node B never saw you. With Redis
+up, one FIFO queue is shared across every node. A join on any node is atomic
+(seat-free check, idempotency key and position in one Lua script, so two nodes
+cannot queue the same user twice); the front of the line is claimed atomically
+across the cluster with a 3-second claim key, so two nodes can never serve the
+same entry; a blocked front (not enough seats anywhere yet) holds the line;
+cancel and position work from any node. Tests run against miniredis: shared
+joins, cross-node FIFO, front-blocks, shared cap, cross-node cancel, no double
+serve, and a dead queue that fails closed (the sale keeps selling, the queue says
+so). All `wl` calls in main.go and the replication replay now go through the
+interface, so a single-node run keeps the in-memory queue byte-for-byte as v2.1.
 
 ## Postgres write-behind (v2.1)
 

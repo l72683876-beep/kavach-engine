@@ -28,7 +28,7 @@ func newReplEngine(t *testing.T, dir string, seats int) *Engine {
 	e.bookGC, _ = NewGroupCommit(dir+"/bookings.jsonl", 10000)
 	e.holdGC, _ = NewGroupCommit(dir+"/holds.jsonl", 10000)
 	recoverState(dir, e.bookGC.path, e.holdGC.path,
-		e.inv, e.res, e.wl, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+		e.inv, e.res, e.wl.(*Waitlist), e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
 	return e
 }
 

@@ -598,6 +598,23 @@ type Waitlist struct {
 
 func NewWaitlist() *Waitlist { return &Waitlist{idem: map[string]string{}} }
 
+// waitlistStore is the pluggable line behind the engine: the in-memory FIFO
+// (zero dependencies, default) or the Redis-backed shared queue (v2.2
+// cluster mode) that every node serves from. Both keep the same contract:
+// strictly FIFO, the front blocks the ones behind it, idempotent joins.
+type waitlistStore interface {
+	byIdem(tenant, key string) (*WaitEntry, bool)
+	join(tenant, key, user string, seats, cap int, ev string) (*WaitEntry, error)
+	cancel(id, tenant string) (*WaitEntry, bool)
+	remove(id string) bool
+	listFor(tenant, user string) []*WaitEntry
+	popReady(inv *Inventory) (*WaitEntry, []int, bool)
+	depth() int
+	snapshot() []*WaitEntry
+}
+
+var _ waitlistStore = (*Waitlist)(nil)
+
 // byIdem returns the live entry for an idempotency key, if it is still queued.
 func (w *Waitlist) byIdem(tenant, key string) (*WaitEntry, bool) {
 	w.mu.Lock()
@@ -614,12 +631,12 @@ func (w *Waitlist) byIdem(tenant, key string) (*WaitEntry, bool) {
 	return nil, false // fulfilled or cancelled: the key is free again
 }
 
-// join appends to the line. Returns (nil) when the waitlist is full.
-func (w *Waitlist) join(tenant, key, user string, seats int, cap int, ev string) *WaitEntry {
+// join appends to the line. Returns (nil, nil) when the waitlist is full.
+func (w *Waitlist) join(tenant, key, user string, seats int, cap int, ev string) (*WaitEntry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if len(w.order) >= cap {
-		return nil
+		return nil, nil
 	}
 	if ev == "" {
 		ev = defaultEventID
@@ -630,7 +647,23 @@ func (w *Waitlist) join(tenant, key, user string, seats int, cap int, ev string)
 	if key != "" {
 		w.idem[tenant+"|"+key] = e.ID
 	}
-	return e
+	return e, nil
+}
+
+// depth reports how many entries are still in line.
+func (w *Waitlist) depth() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.order)
+}
+
+// snapshot returns every live entry in queue order.
+func (w *Waitlist) snapshot() []*WaitEntry {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := make([]*WaitEntry, len(w.order))
+	copy(out, w.order)
+	return out
 }
 
 // cancel removes an entry from the line. Tenant-scoped.
@@ -975,7 +1008,8 @@ type Engine struct {
 	rid          uint64
 	inFlight     int64
 	holdTTL      time.Duration
-	wl           *Waitlist
+	wl           waitlistStore
+	wlShared     bool // the line is a shared Redis queue (v2.2 cluster mode)
 	waitCap      int
 	webhookURL   string
 	webhookCh    chan map[string]interface{}
@@ -1162,13 +1196,26 @@ func (e *Engine) notifyWebhook(ev map[string]interface{}) {
 }
 
 // serveWaitlist serves the front of the line while seats are free. Called
-// after every event that returns seats to the pool (expiry or release).
+// after every event that returns seats to the pool (expiry or release). In
+// shared-waitlist mode a node that could not serve the front asks its peers
+// to try: the line is cluster-wide, so the seats may live on another node.
 func (e *Engine) serveWaitlist() {
+	served := e.serveWaitlistLocal()
+	if e.wlShared && served == 0 && e.wl.depth() > 0 && len(e.peers) > 1 {
+		go e.probePeersForServe("")
+	}
+}
+
+// serveWaitlistLocal serves the front of the line from this node's own
+// seats. Returns how many entries it fulfilled.
+func (e *Engine) serveWaitlistLocal() int {
+	served := 0
 	for {
 		entry, seats, ok := e.wl.popReady(e.inv)
 		if !ok {
-			return
+			return served
 		}
+		served++
 		res := &Reservation{
 			ID:        fmt.Sprintf("RSV%08d", atomic.AddUint64(&e.rid, 1)),
 			Tenant:    entry.Tenant,
@@ -1193,6 +1240,53 @@ func (e *Engine) serveWaitlist() {
 			"hold_expires_at": res.ExpiresAt.Unix(),
 		})
 	}
+}
+
+// probePeersForServe asks peers to try the shared front. seen carries the
+// node names already asked, so the ring is walked once per release and
+// never loops.
+func (e *Engine) probePeersForServe(seen string) {
+	self := fmt.Sprintf("node%d", e.selfIdx)
+	asked := map[string]bool{}
+	for _, part := range strings.Split(seen, ",") {
+		asked[strings.TrimSpace(part)] = true
+	}
+	for k := 1; k < len(e.peers); k++ {
+		idx := (e.selfIdx + k) % len(e.peers)
+		if asked[fmt.Sprintf("node%d", idx)] {
+			continue
+		}
+		req, err := http.NewRequest(http.MethodPost, "http://"+e.peers[idx]+"/internal/waitlist-serve", nil)
+		if err != nil {
+			continue
+		}
+		if seen != "" {
+			req.Header.Set("X-Kavach-Forwarded-By", seen+","+self)
+		} else {
+			req.Header.Set("X-Kavach-Forwarded-By", self)
+		}
+		resp, err := e.httpc.Do(req)
+		if err != nil {
+			continue // peer down: the next release tries again
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
+}
+
+// handleWaitlistServe is the peer-facing half of the shared waitlist: try
+// this node's seats against the shared front, and pass the ask on when this
+// node could not serve it.
+func (e *Engine) handleWaitlistServe(w http.ResponseWriter, r *http.Request) {
+	if !e.fromPeer(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	served := e.serveWaitlistLocal()
+	if served == 0 && e.wlShared && e.wl.depth() > 0 {
+		go e.probePeersForServe(r.Header.Get("X-Kavach-Forwarded-By"))
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"served": served})
 }
 
 func (e *Engine) handleWaitlistJoin(w http.ResponseWriter, r *http.Request) {
@@ -1241,7 +1335,11 @@ func (e *Engine) handleWaitlistJoin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "seats_available"})
 		return
 	}
-	entry := e.wl.join(tenant, req.IdemKey, req.User, req.Seats, e.waitCap, ev)
+	entry, errWl := e.wl.join(tenant, req.IdemKey, req.User, req.Seats, e.waitCap, ev)
+	if errWl != nil { // the shared queue is unreachable: say so, never "full"
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"status": "waitlist_unavailable"})
+		return
+	}
 	if entry == nil {
 		writeJSON(w, http.StatusConflict, map[string]interface{}{"status": "waitlist_full"})
 		return
@@ -2010,7 +2108,7 @@ func main() {
 	ipBurst := flag.Float64("ip-burst", 40, "per-IP burst")
 	globalRate := flag.Float64("global-rate", 0, "cluster-wide global requests/second across ALL nodes, one shared budget (0 = off; needs -redis)")
 	globalBurst := flag.Float64("global-burst", 0, "cluster-wide global burst")
-	redisAddr := flag.String("redis", "", "Redis address (redis://host:6379) for shared token buckets: ONE rate budget across every node (needs: go build -tags redis; empty = per-node in-memory, zero-dependency)")
+	redisAddr := flag.String("redis", "", "Redis address (redis://host:6379) for shared token buckets (ONE rate budget across every node) and the shared FIFO waitlist (ONE line across every node) (needs: go build -tags redis; empty = per-node in-memory, zero-dependency)")
 	cfgPath := flag.String("config", "", "path to a Kavach config file (.kcl) to describe the sale; explicit CLI flags override it")
 	flag.Parse()
 
@@ -2147,6 +2245,16 @@ func main() {
 		perShardWorkers = 1
 	}
 	shardsList := make([]*Engine, nShards)
+	var sharedWl waitlistStore
+	if *redisAddr != "" { // v2.2: ONE FIFO line across every node
+		wlS, errW := newRedisWaitlist(*redisAddr, "kavach:wl")
+		if errW == nil {
+			sharedWl = wlS
+			log.Printf("shared waitlist on %s: one FIFO line across every node", *redisAddr)
+		} else {
+			log.Printf("kavach: shared waitlist unavailable (%v); the per-node in-memory line stays on", errW)
+		}
+	}
 	var recBook, recRes, recWait, recLines, maxSnapSeq int64
 	for i := 0; i < nShards; i++ {
 		bookPath, holdPath := *logPath, *holdsLog
@@ -2164,6 +2272,12 @@ func main() {
 		if nShards == 1 && len(peers) > 1 {
 			shardOffset = offset // the real per-peer slice offset computed above
 		}
+		wlThis := waitlistStore(NewWaitlist())
+		wlSharedOn := false
+		if sharedWl != nil { // one shared line for every shard and peer
+			wlThis = sharedWl
+			wlSharedOn = true
+		}
 		e := &Engine{
 			inv:          NewInventory(*seats, shardOffset),
 			userLim:      userLim,
@@ -2175,7 +2289,8 @@ func main() {
 			queue:        make(chan *job, 100000),
 			lat:          NewLatencyRing(1000000),
 			holdTTL:      time.Duration(*holdTTL) * time.Second,
-			wl:           NewWaitlist(),
+			wl:           wlThis,
+			wlShared:     wlSharedOn,
 			waitCap:      *waitCap,
 			webhookURL:   *webhookURL,
 			webhookCh:    make(chan map[string]interface{}, 10000),
@@ -2195,8 +2310,14 @@ func main() {
 		}
 		// restart recovery: newest snapshot first (if any), then the log tail
 		// after its recorded offsets; without a snapshot, the full logs replay.
+		var wlForRecovery *Waitlist
+		if mem, ok := wlThis.(*Waitlist); ok && !wlSharedOn {
+			wlForRecovery = mem
+		} else { // the shared Redis line IS the waitlist state; replay rebuilds
+			wlForRecovery = NewWaitlist() // into scratch so the queue is never double-added
+		}
 		snapSeq, bRec, rRec, wRec, rLines := recoverState(snapDir, bookPath, holdPath,
-			e.inv, e.res, e.wl, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+			e.inv, e.res, wlForRecovery, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
 		atomic.StoreInt64(&e.recoveryLines, int64(rLines))
 		// snapshot numbering continues from disk: a fresh run must never
 		// overwrite a snapshot file that an older recovery path may still need
@@ -2349,6 +2470,7 @@ func main() {
 	http.HandleFunc("/reservation", sr.scan((*Engine).handleReservation, false))
 	http.HandleFunc("/waitlist", sr.handleWaitlist)
 	http.HandleFunc("/waitlist/cancel", sr.scan((*Engine).handleWaitlistCancel, true))
+	http.HandleFunc("/internal/waitlist-serve", sr.shards[0].handleWaitlistServe)
 	http.HandleFunc("/status", sr.shards[0].handleStatus) // the idem store is shared
 	http.HandleFunc("/seats", sr.route((*Engine).handleSeats, false))
 	http.HandleFunc("/seats/state", sr.route((*Engine).handleSeatsState, false))

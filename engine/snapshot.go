@@ -21,8 +21,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"os"
 	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -48,13 +48,13 @@ type snapshotPayload struct {
 	Seats      []int32 `json:"seats"`
 	SeatOffset int     `json:"seat_offset"`
 
-	Reservations []snapReservation `json:"reservations"`
-	ResIdem      map[string]string `json:"res_idem,omitempty"`
-	Waitlist     []snapWaitEntry   `json:"waitlist"`
-	WaitlistSeq  uint64            `json:"waitlist_seq"`
+	Reservations []snapReservation   `json:"reservations"`
+	ResIdem      map[string]string   `json:"res_idem,omitempty"`
+	Waitlist     []snapWaitEntry     `json:"waitlist"`
+	WaitlistSeq  uint64              `json:"waitlist_seq"`
 	Idem         map[string]snapIdem `json:"idem"`
-	Bid          uint64            `json:"bid"`
-	Rid          uint64            `json:"rid"`
+	Bid          uint64              `json:"bid"`
+	Rid          uint64              `json:"rid"`
 }
 
 type snapReservation struct {
@@ -124,15 +124,13 @@ func (e *Engine) capture() *snapshotPayload {
 	}
 	e.res.mu.Unlock()
 
-	e.wl.mu.Lock()
-	p.Waitlist = make([]snapWaitEntry, 0, len(e.wl.order))
-	for _, w := range e.wl.order {
+	p.Waitlist = make([]snapWaitEntry, 0)
+	for _, w := range e.wl.snapshot() {
 		p.Waitlist = append(p.Waitlist, snapWaitEntry{
 			ID: w.ID, Tenant: w.Tenant, User: w.User, Seats: w.Seats,
 			QueuedAt: w.QueuedAt.UnixNano(),
 		})
 	}
-	e.wl.mu.Unlock()
 	p.WaitlistSeq = atomic.LoadUint64(&waitlistSeq)
 
 	// idempotency store: only settled entries from the last 10 minutes

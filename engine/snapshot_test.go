@@ -38,16 +38,16 @@ func newHarness(t *testing.T, seats int) *snapshotHarness {
 func (h *snapshotHarness) restart(t *testing.T, seats int) {
 	t.Helper()
 	e := &Engine{
-		inv:  NewInventory(seats, 0),
-		idem: NewIdemStore(),
-		res:  NewReservationStore(),
-		wl:   NewWaitlist(),
+		inv:     NewInventory(seats, 0),
+		idem:    NewIdemStore(),
+		res:     NewReservationStore(),
+		wl:      NewWaitlist(),
 		snapDir: h.dir,
 	}
 	e.bookGC, _ = NewGroupCommit(h.bookBase, 10000)
 	e.holdGC, _ = NewGroupCommit(h.holdBase, 10000)
 	snapSeq, b, r, w, lines := recoverState(h.dir, h.bookBase, h.holdBase,
-		e.inv, e.res, e.wl, e.idem, 60*time.Second, &e.bid, &e.rid, &waitlistSeq)
+		e.inv, e.res, e.wl.(*Waitlist), e.idem, 60*time.Second, &e.bid, &e.rid, &waitlistSeq)
 	t.Logf("restart: snapshot=%d bookings=%d reservations=%d waitlist=%d tailLines=%d", snapSeq, b, r, w, lines)
 	if snapSeq > 0 {
 		if _, p, ok := loadSnapshot(h.dir); ok {

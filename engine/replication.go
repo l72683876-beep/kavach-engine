@@ -67,7 +67,7 @@ func parseReplayEvent(line []byte) (replayEvent, bool) {
 		resID: gs("reservation_id"), tenant: gs("tenant"), user: gs("user"),
 		userID: gs("user_id"),
 		seats:  gi("seats"), wlID: gs("waitlist_id"), wlSeats: int(gf("seats")),
-		key:    gs("key"), expiresAt: int64(gf("expires_at")), fp: gs("fp"),
+		key: gs("key"), expiresAt: int64(gf("expires_at")), fp: gs("fp"),
 	}, true
 }
 
@@ -103,9 +103,9 @@ func applyReplayEvents(events []replayEvent, inv *Inventory, res *ReservationSto
 			}
 			if ev.key != "" { // the retry-safety guarantee survives restarts too
 				fp := ev.fp
-			if fp == "" { // pre-fp WAL lines: recompute the legacy fingerprint
-				fp = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", ev.key, ev.user, len(ev.seats)))))
-			}
+				if fp == "" { // pre-fp WAL lines: recompute the legacy fingerprint
+					fp = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", ev.key, ev.user, len(ev.seats)))))
+				}
 				idem.mu.Lock()
 				idem.m[ev.tenant+"|"+ev.key] = &idemEntry{
 					Fingerprint: fp, Tenant: ev.tenant, LastSeen: time.Now(),
@@ -477,7 +477,11 @@ func (e *Engine) applyLocalTail(path string, pos *int64) {
 	}
 	sort.SliceStable(events, func(i, j int) bool { return events[i].ts < events[j].ts })
 	n := len(events)
-	applyReplayEvents(events, e.inv, e.res, e.wl, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
+	wlApply, _ := e.wl.(*Waitlist)
+	if wlApply == nil { // shared Redis line: the queue is its own state, never re-add
+		wlApply = NewWaitlist()
+	}
+	applyReplayEvents(events, e.inv, e.res, wlApply, e.idem, e.holdTTL, &e.bid, &e.rid, &waitlistSeq)
 	*pos = newPos
 	atomic.AddInt64(&e.replicatedLines, int64(n))
 }
@@ -531,4 +535,3 @@ func fileSize(path string) int64 {
 	}
 	return st.Size()
 }
-
