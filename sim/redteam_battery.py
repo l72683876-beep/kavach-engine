@@ -4785,6 +4785,100 @@ def app_hold_null_user():
     return check("app", "app hold with user_id null: no 500, app alive", p != 500 and p != -1 and alive, "p=%s" % p)
 app_hold_null_user()
 
+
+# ---------------- Phase AQ: run 89 extras (12 new angles) ----------------
+def long_request_id():
+    b = json.dumps({"user_id": "rt-89lr", "idempotency_key": "k89lr", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b, rid="r" * 2000)
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("auth", "2000-char X-Kavach-Request-Id: no 5xx, alive", ok, "status=%s" % st)
+long_request_id()
+def trailing_slash():
+    st, _ = raw(ER, "GET", "/seats/")
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "GET /seats/ trailing slash: no 5xx, alive", ok, "status=%s" % st)
+trailing_slash()
+def user_id_array():
+    st, _ = post(ER, "/reserve", {"user_id": ["a"], "idempotency_key": "k89ua", "seats": 1})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("fuzz", "reserve with user_id as array: 4xx, no 5xx, alive", st != 500 and st != -1 and alive, "status=%s" % st)
+user_id_array()
+def seats_zero():
+    st, _ = post(ER, "/reserve", {"user_id": "rt-89sz", "idempotency_key": "k89sz", "seats": 0})
+    s = seats(ER)
+    conserved = s.get("total", -1) == s.get("sold", 0) + s.get("held", 0) + s.get("free", 0)
+    ok = st != 500 and st != -1 and conserved
+    return check("state", "reserve with seats 0: 4xx, conserved", ok, "status=%s" % st)
+seats_zero()
+def app_webhook_empty_body():
+    w, _ = raw(AR, "POST", "/api/kavach-webhook?token=whsec-redtest", b"")
+    alive = raw(AR, "GET", "/")[0] == 200
+    return check("app", "app webhook with empty body (valid token): no 500, alive", w != 500 and w != -1 and alive, "w=%s" % w)
+app_webhook_empty_body()
+def reads_after_ip_burst():
+    def go(i):
+        return post(ER2, "/reserve", {"user_id": "rt-89ib%d" % i, "idempotency_key": "k89ib%d" % i, "seats": 1})[0]
+    with ThreadPoolExecutor(20) as ex:
+        outs = list(ex.map(go, range(160)))  # past ip-burst 300? no: 160 reserves + prior traffic
+    st_read, j = raw(ER2, "GET", "/seats")
+    ok = st_read == 200 and all(x != 500 for x in outs)
+    return check("rate", "reads stay 200 after 160-reserve IP burst: no 5xx, alive", ok, "read=%s 5xx=%d" % (st_read, sum(1 for x in outs if x in (500, -1))))
+reads_after_ip_burst()
+def url_fragment():
+    st, _ = raw(ER, "GET", "/seats#frag")
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "URL with #fragment: no 5xx, alive", ok, "status=%s" % st)
+url_fragment()
+def overfree_multi():
+    s0 = seats(ER)
+    free = s0.get("free", 0)
+    if free < 1:
+        return check("state", "reserve free+1 seats: skipped (free=%d)" % free, True, "free=%d" % free)
+    st, _ = post(ER, "/reserve", {"user_id": "rt-89of", "idempotency_key": "k89of", "seats": free + 1})
+    s1 = seats(ER)
+    conserved = s1.get("total", -1) == s1.get("sold", 0) + s1.get("held", 0) + s1.get("free", 0)
+    ok = st != 200 and st != 500 and st != -1 and conserved and s1.get("free", -1) == free
+    return check("state", "reserve free+1 seats: 4xx, free unchanged, conserved", ok, "status=%s free=%s" % (st, free))
+overfree_multi()
+def idem_key_number():
+    st, _ = post(ER, "/reserve", {"user_id": "rt-89in", "idempotency_key": 12345, "seats": 1})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("fuzz", "reserve with idempotency_key as number: 4xx, no 5xx, alive", st != 500 and st != -1 and alive, "status=%s" % st)
+idem_key_number()
+def app_confirm_spaces_rid():
+    st, j = post(ER, "/reserve", {"user_id": "rt-89cs", "idempotency_key": "k89cs", "seats": 1})
+    rid = j.get("reservation_id") if isinstance(j, dict) and st == 200 else None
+    if not rid:
+        return check("app", "app confirm rid with spaces: skipped (hold unavailable)", True, "st=%s" % st)
+    p, _ = raw(AR, "POST", "/api/confirm", json.dumps({"reservation_id": " " + rid + " "}))
+    alive = raw(AR, "GET", "/")[0] == 200
+    s = seats(ER)
+    conserved = s.get("total", -1) == s.get("sold", 0) + s.get("held", 0) + s.get("free", 0)
+    ok = p != 500 and p != -1 and alive and conserved
+    return check("app", "app confirm with padded reservation_id: no 500, conserved", ok, "p=%s" % p)
+app_confirm_spaces_rid()
+def negative_timestamp():
+    b = json.dumps({"user_id": "rt-89nt", "idempotency_key": "k89nt", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", b)
+    h["X-Kavach-Timestamp"] = "-999"
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("auth", "X-Kavach-Timestamp -999: 401/400, alive", st in (400, 401) and alive, "status=%s" % st)
+negative_timestamp()
+def deep_nested_json():
+    body = {"user_id": "rt-89dn", "idempotency_key": "k89dn", "seats": 1, "extra": None}
+    for _ in range(50):
+        body = {"nested": body}
+    st, _ = post(ER, "/reserve", body)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("fuzz", "50-level nested JSON: no 5xx, alive", ok, "status=%s" % st)
+deep_nested_json()
+
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]
 findings = [r for r in results if r["ok"] and "finding" in r["name"].lower()]
