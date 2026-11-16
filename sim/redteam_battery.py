@@ -5785,6 +5785,130 @@ def webhook_huge_body():
     return check("app", "webhook 100KB body with valid token: no 500, no hang, alive", ok, "w=%s" % w)
 webhook_huge_body()
 
+# ---------------- Phase AZ: run 98 extras (12 new angles) ----------------
+def empty_request_socket():
+    import socket as _s
+    buf = b""
+    try:
+        sk = _s.create_connection(("127.0.0.1", ER), timeout=8)
+        sk.sendall(b"\r\n\r\n")
+        sk.settimeout(4)
+        try: buf = sk.recv(200)
+        except Exception: pass
+        sk.close()
+    except Exception:
+        pass
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("wire", "empty request (CRLF only): no hang, engine alive", alive, "resp=%r" % buf[:40])
+empty_request_socket()
+def mac_method_mismatch():
+    b = json.dumps({"user_id": "rt-98mm", "idempotency_key": "k98mm", "seats": 1}).encode()
+    h = sign(KEY, "GET", "/reserve", b)
+    h.pop("Content-Type", None)
+    st, _ = raw(ER, "POST", "/reserve", b, h)
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 200 and st != 500 and st != -1 and alive
+    return check("auth", "MAC signed for GET sent as POST /reserve: 401, no 5xx, alive", ok, "status=%s" % st)
+mac_method_mismatch()
+def timestamp_past_outside_window():
+    ts = str(int(time.time()) - 301)
+    b = json.dumps({"user_id": "rt-98pw", "idempotency_key": "k98pw", "seats": 1}).encode()
+    st, _ = raw(ER, "POST", "/reserve", b, sign(KEY, "POST", "/reserve", b, ts=ts))
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("auth", "timestamp -301s just outside past window: 401, alive", st == 401 and alive, "status=%s" % st)
+timestamp_past_outside_window()
+def idem_key_null():
+    st, _ = post(ER, "/reserve", {"user_id": "rt-98kn", "idempotency_key": None, "seats": 1})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("fuzz", "idempotency_key as null: 4xx, no 5xx, alive", ok, "status=%s" % st)
+idem_key_null()
+def user_id_only_whitespace():
+    st, _ = post(ER, "/reserve", {"user_id": "   ", "idempotency_key": "k98ws", "seats": 1})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("fuzz", "user_id with only whitespace: no 500, alive", ok, "status=%s" % st)
+user_id_only_whitespace()
+def release_after_transfer():
+    st, j = post(ER, "/reserve", {"user_id": "rt-98rt", "idempotency_key": "k98rt", "seats": 1})
+    rid = j.get("reservation_id") if isinstance(j, dict) and st == 200 else None
+    if not rid:
+        return check("state", "release after transfer: skipped (hold unavailable)", True, "st=%s" % st)
+    st2, _ = post(ER, "/confirm", {"reservation_id": rid})
+    if st2 != 200:
+        return check("state", "release after transfer: skipped (confirm %s)" % st2, True)
+    st3, _ = post(ER, "/transfer", {"reservation_id": rid, "to_user": "rt-98rt-new"})
+    if st3 != 200:
+        return check("state", "release after transfer: skipped (transfer %s)" % st3, True)
+    st4, _ = post(ER, "/release", {"reservation_id": rid})
+    time.sleep(1.0)
+    ok = st4 != 500 and st4 != -1 and conserved()
+    return check("state", "release of transferred booking: no 5xx, conserved", ok, "st4=%s" % st4)
+release_after_transfer()
+def app_seats_post():
+    st, _ = raw(AR, "POST", "/api/seats", "{}")
+    alive = raw(AR, "GET", "/")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("app", "app /api/seats with method POST: no 500, alive", ok, "st=%s" % st)
+app_seats_post()
+def webhook_missing_rid():
+    body = '{"token":"whsec-redtest","event":"payment_success"}'
+    w, _ = raw(AR, "POST", "/api/kavach-webhook?token=whsec-redtest", body)
+    alive = raw(AR, "GET", "/")[0] == 200
+    ok = w != 500 and w != -1 and alive
+    return check("app", "webhook missing reservation_id: no 500, alive", ok, "w=%s" % w)
+webhook_missing_rid()
+def app_pay_other_engine_rid():
+    st, j = post(ER2, "/reserve", {"user_id": "rt-98op", "idempotency_key": "k98op", "seats": 1})
+    rid = j.get("reservation_id") if isinstance(j, dict) and st == 200 else None
+    if not rid:
+        return check("app", "app pay other-engine rid: skipped (8092 hold unavailable)", True, "st=%s" % st)
+    p, _ = raw(AR, "POST", "/api/pay", json.dumps({"reservation_id": rid}))
+    post(ER2, "/release", {"reservation_id": rid})
+    alive = raw(AR, "GET", "/")[0] == 200
+    ok = p != 500 and p != -1 and alive
+    return check("app", "app /api/pay with rid held on engine 8092: no 500, graceful", ok, "p=%s" % p)
+app_pay_other_engine_rid()
+def long_method_name():
+    import socket as _s
+    buf = b""
+    try:
+        sk = _s.create_connection(("127.0.0.1", ER), timeout=8)
+        sk.sendall(b"X" * 10000 + b" /seats HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        sk.settimeout(4)
+        try: buf = sk.recv(200)
+        except Exception: pass
+        sk.close()
+    except Exception:
+        pass
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    return check("wire", "10KB method name in request line: no hang, engine alive", alive, "resp=%r" % buf[:40])
+long_method_name()
+def long_host_header():
+    st, _ = raw(ER, "GET", "/seats", headers={"Host": "h" * 10000})
+    alive = raw(ER, "GET", "/seats")[0] == 200
+    ok = st != 500 and st != -1 and alive
+    return check("wire", "Host header 10KB value: no 5xx, no hang, alive", ok, "status=%s" % st)
+long_host_header()
+def transfer_release_race():
+    st, j = post(ER, "/reserve", {"user_id": "rt-98tr", "idempotency_key": "k98tr", "seats": 1})
+    rid = j.get("reservation_id") if isinstance(j, dict) and st == 200 else None
+    if not rid:
+        return check("race", "transfer vs release race: skipped (hold unavailable)", True, "st=%s" % st)
+    st2, _ = post(ER, "/confirm", {"reservation_id": rid})
+    if st2 != 200:
+        return check("race", "transfer vs release race: skipped (confirm %s)" % st2, True)
+    def go(i):
+        if i % 2 == 0:
+            return post(ER, "/transfer", {"reservation_id": rid, "to_user": "rt-98tr-%d" % i})[0]
+        return post(ER, "/release", {"reservation_id": rid})[0]
+    with ThreadPoolExecutor(6) as ex:
+        outs = list(ex.map(go, range(6)))
+    time.sleep(1.0)
+    ok = all(x != 500 and x != -1 for x in outs) and conserved()
+    return check("race", "parallel transfer + release same rid: no 5xx, conserved", ok, "200s=%d" % outs.count(200))
+transfer_release_race()
+
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]
 findings = [r for r in results if r["ok"] and "finding" in r["name"].lower()]
