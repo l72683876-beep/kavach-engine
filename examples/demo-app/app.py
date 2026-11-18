@@ -92,6 +92,8 @@ def seats_state():
 def hold():
     """Reserve seats through Kavach; the app keeps its own order record."""
     b = request.get_json(silent=True) or {}
+    if not isinstance(b, dict):
+        return jsonify({"ok": False, "status": "bad_request"}), 400
     n = b.get("seats", 1)
     if isinstance(n, bool) or not isinstance(n, int):
         # reject strings/floats: int("2") and int(1.5) would silently coerce
@@ -116,6 +118,8 @@ def pay():
     """Simulated payment gateway. Success -> confirm the hold in Kavach.
     Failure or the customer walking away -> release the seats back."""
     b = request.get_json(silent=True) or {}
+    if not isinstance(b, dict):
+        return jsonify({"ok": False, "status": "bad_request"}), 400
     rid = b.get("reservation_id")
     if b.get("outcome", "success") != "success":
         try:
@@ -132,6 +136,8 @@ def pay():
 @app.post("/api/waitlist")
 def waitlist():
     b = request.get_json(silent=True) or {}
+    if not isinstance(b, dict):
+        return jsonify({"ok": False, "status": "bad_request"}), 400
     try:
         try:
             n = int(b.get("seats", 1))
