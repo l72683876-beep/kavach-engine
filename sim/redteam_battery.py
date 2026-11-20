@@ -7194,6 +7194,115 @@ def app_pay_other_users_rid():
     return check("app", "app /api/pay with another user's held rid: no 500, no unauthorized success", ok, "st=%s j=%s" % (st2, str(j2)[:60]))
 app_pay_other_users_rid()
 
+# ---------------- Phase BK: run 109 extras (12 new angles) ----------------
+def bk_alive(port, path="/seats"):
+    st, _ = raw(port, "GET", path)
+    return st == 200
+
+def bk_hold(user, key="k109%s", port=ER, seats_n=1):
+    st, j = post(port, "/reserve", {"user_id": user, "idempotency_key": key, "seats": seats_n})
+    return (j.get("reservation_id") if isinstance(j, dict) and st == 200 else None), st, (j if isinstance(j, dict) else {"raw": str(j)[:80]})
+
+def cross_instance_release():
+    rid, st, _ = bk_hold("rt-109xr", "k109xr")
+    if not rid:
+        return check("state", "cross-instance release: skipped (hold unavailable)", True, "st=%s" % st)
+    body = json.dumps({"reservation_id": rid}).encode()
+    st2, _ = raw(ER2, "POST", "/release", body, sign(KEY, "POST", "/release", body))
+    time.sleep(0.3)
+    ok = st2 != 500 and st2 != -1 and conserved(ER) and conserved(ER2)
+    return check("state", "cross-instance release (8091 rid on 8092): no 5xx, both conserved", ok, "st2=%s" % st2)
+cross_instance_release()
+
+def app_board_huge_offset():
+    st, j = raw(AR, "GET", "/board?offset=999999999999")
+    ok = st != 500 and st != -1 and bk_alive(AR, "/")
+    return check("app", "app /board huge offset: no 500, app alive", ok, "st=%s" % st)
+app_board_huge_offset()
+
+def app_deals_idor_probe():
+    st, j = raw(AR, "GET", "/api/deals?user_id=rt-other-user-109")
+    ok = st != 500 and st != -1 and bk_alive(AR, "/")
+    return check("app", "app /api/deals with another user's user_id (IDOR probe): no 500, app alive", ok, "st=%s" % st)
+app_deals_idor_probe()
+
+def sig_all_zero():
+    body = json.dumps({"user_id": "rt-109zs", "idempotency_key": "k109zs", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/reserve", body)
+    h["X-Kavach-Signature"] = "0" * 64
+    st, j = raw(ER, "POST", "/reserve", body, h)
+    ok = st in (401, 403) and conserved() and bk_alive(ER)
+    return check("auth", "X-Kavach-Signature all-zero 64 hex: 401, conserved", ok, "st=%s" % st)
+sig_all_zero()
+
+def waitlist_after_confirm():
+    rid, st, _ = bk_hold("rt-109wc", "k109wc")
+    if not rid:
+        return check("state", "post-confirm waitlist join: skipped (hold unavailable)", True, "st=%s" % st)
+    body = json.dumps({"reservation_id": rid}).encode()
+    st1, _ = raw(ER, "POST", "/confirm", body, sign(KEY, "POST", "/confirm", body))
+    st2, _ = post(ER, "/waitlist", {"user_id": "rt-109wc", "seats": 1})
+    time.sleep(0.2)
+    ok = all(x != 500 and x != -1 for x in (st1, st2)) and conserved() and bk_alive(ER)
+    return check("state", "post-confirm waitlist join by same user: no 5xx, conserved", ok, "conf=%s wl=%s" % (st1, st2))
+waitlist_after_confirm()
+
+def idem_replay_post_confirm():
+    rid, st, _ = bk_hold("rt-109ir", "k109ir")
+    if not rid:
+        return check("state", "idem replay post-confirm: skipped (hold unavailable)", True, "st=%s" % st)
+    body = json.dumps({"reservation_id": rid}).encode()
+    st1, _ = raw(ER, "POST", "/confirm", body, sign(KEY, "POST", "/confirm", body))
+    st2, _ = post(ER, "/reserve", {"user_id": "rt-109ir", "idempotency_key": "k109ir", "seats": 1})
+    time.sleep(0.2)
+    ok = all(x != 500 and x != -1 for x in (st1, st2)) and conserved() and bk_alive(ER)
+    return check("state", "idem replay post-confirm (same idem reserve after confirm): no 5xx, conserved", ok, "conf=%s re2=%s" % (st1, st2))
+idem_replay_post_confirm()
+
+def app_pay_outcome_pending():
+    body = json.dumps({"reservation_id": "RSV00000001", "user_id": "rt-109po", "outcome": "pending"}).encode()
+    st, j = raw(AR, "POST", "/api/pay", body)
+    ok = st != 500 and st != -1 and bk_alive(AR, "/")
+    return check("app", "app /api/pay outcome \"pending\": no 500, app alive", ok, "st=%s" % st)
+app_pay_outcome_pending()
+
+def app_hold_seats_neg():
+    body = json.dumps({"user_id": "rt-109hn", "seats": -1}).encode()
+    st, j = raw(AR, "POST", "/api/hold", body)
+    ok = st != 500 and st != -1 and bk_alive(AR, "/")
+    return check("app", "app /api/hold seats -1: no 500, app alive", ok, "st=%s" % st)
+app_hold_seats_neg()
+
+def seats_scientific_string():
+    st, j = post(ER, "/reserve", {"user_id": "rt-109ss", "idempotency_key": "k109ss", "seats": "1e2"})
+    ok = st != 500 and st != -1 and conserved() and bk_alive(ER)
+    return check("fuzz", "reserve seats as string \"1e2\": graceful, conserved", ok, "st=%s" % st)
+seats_scientific_string()
+
+def webhook_event_empty_str():
+    st, j = raw(AR, "POST", "/api/kavach-webhook?token=whsec-redtest", json.dumps({"event": "", "reservation_id": "RSV00000001"}).encode())
+    ok = st != 500 and st != -1 and bk_alive(AR, "/")
+    return check("webhook", "webhook event as empty string: no 500, app alive", ok, "st=%s" % st)
+webhook_event_empty_str()
+
+def parallel_identical_reserves():
+    outs = []
+    def fire(_):
+        return post(ER, "/reserve", {"user_id": "rt-109pi", "idempotency_key": "k109pi", "seats": 1})[0]
+    with ThreadPoolExecutor(2) as ex:
+        outs = list(ex.map(fire, range(2)))
+    time.sleep(0.3)
+    ok = all(x != 500 and x != -1 for x in outs) and conserved() and bk_alive(ER)
+    return check("race", "two parallel identical reserves (same idem, same payload): no 5xx, conserved", ok, "sts=%s" % outs)
+parallel_identical_reserves()
+
+def app_hold_dup_seats_keys():
+    body = ('{"user_id":"rt-109dk","seats":1,"seats":2}').encode()
+    st, j = raw(AR, "POST", "/api/hold", body)
+    ok = st != 500 and st != -1 and bk_alive(AR, "/")
+    return check("app", "app /api/hold duplicate seats JSON keys: no 500, app alive", ok, "st=%s" % st)
+app_hold_dup_seats_keys()
+
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]
 findings = [r for r in results if r["ok"] and "finding" in r["name"].lower()]
