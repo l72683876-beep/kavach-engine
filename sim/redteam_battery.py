@@ -7620,6 +7620,114 @@ def webhook_dup_keys():
     return check("webhook", "webhook duplicate event+rid keys: no 500, app alive", ok, "st=%s" % st)
 webhook_dup_keys()
 
+# ---------------- Phase BO: run 113 extras (12 new angles) ----------------
+def bo_alive(port, path="/seats"):
+    st, _ = raw(port, "GET", path)
+    return st == 200
+
+def bo_bo_alive(port, path="/seats"):
+    st, _ = raw(port, "GET", path)
+    return st == 200
+def bo_hold(user, key, seats_n=1, port=ER):
+    st, j = post(port, "/reserve", {"user_id": user, "idempotency_key": key, "seats": seats_n})
+    return (j.get("reservation_id") if isinstance(j, dict) and st == 200 else None), st, j
+
+def bom_body_reserve():
+    body = json.dumps({"user_id": "rt-113bom", "idempotency_key": "k113bom", "seats": 1}).encode()
+    st, _ = raw(ER, "POST", "/reserve", b"\xef\xbb\xbf" + body, sign(KEY, "POST", "/reserve", b"\xef\xbb\xbf" + body))
+    ok = st != 500 and st != -1 and conserved() and bo_bo_alive(ER)
+    return check("fuzz", "reserve body with UTF-8 BOM: no 5xx, conserved", ok, "st=%s" % st)
+bom_body_reserve()
+
+def seats_beyond_float():
+    st, j = post(ER, "/reserve", {"user_id": "rt-113bf", "idempotency_key": "k113bf", "seats": 9007199254740993})
+    ok = st != 500 and st != -1 and conserved() and bo_bo_alive(ER)
+    return check("fuzz", "reserve seats 2^53+1: graceful, conserved", ok, "st=%s" % st)
+seats_beyond_float()
+
+def reserve_dup_seats_keys():
+    body = ('{"user_id":"rt-113dk","idempotency_key":"k113dk","seats":1,"seats":1}').encode()
+    st, _ = raw(ER, "POST", "/reserve", body, sign(KEY, "POST", "/reserve", body))
+    ok = st != 500 and st != -1 and conserved() and bo_bo_alive(ER)
+    return check("fuzz", "reserve duplicate seats keys: no 5xx, conserved", ok, "st=%s" % st)
+reserve_dup_seats_keys()
+
+def app_hold_seats_object():
+    body = json.dumps({"user_id": "rt-113so", "seats": {}}).encode()
+    st, j = raw(AR, "POST", "/api/hold", body)
+    ok = st != 500 and st != -1 and bo_bo_alive(AR, "/")
+    return check("app", "app /api/hold seats as JSON object: no 500, app alive", ok, "st=%s" % st)
+app_hold_seats_object()
+
+def release_with_idem():
+    rid, st, _ = bo_hold("rt-113ri", "k113ri")
+    if not rid:
+        return check("state", "release with idem: skipped (hold unavailable)", True, "st=%s" % st)
+    st2, _ = post(ER, "/release", {"reservation_id": rid, "idempotency_key": "k113ri2"})
+    ok = st2 != 500 and st2 != -1 and conserved() and bo_bo_alive(ER)
+    return check("state", "release with idempotency_key field: no 5xx, conserved", ok, "st2=%s" % st2)
+release_with_idem()
+
+def app_pay_dup_rid_keys():
+    body = ('{"reservation_id":"RSV00000001","reservation_id":"RSV00000001","user_id":"rt-113pd","outcome":"success"}').encode()
+    st, j = raw(AR, "POST", "/api/pay", body)
+    ok = st != 500 and st != -1 and bo_bo_alive(AR, "/")
+    return check("app", "app /api/pay duplicate reservation_id keys: no 500, app alive", ok, "st=%s" % st)
+app_pay_dup_rid_keys()
+
+def webhook_token_trailing_newline():
+    st, j = raw(AR, "POST", "/api/kavach-webhook?token=whsec-redtest%0A", json.dumps({"event": "payment_success", "reservation_id": "RSV00000001"}).encode())
+    ok = st != 500 and st != -1 and bo_bo_alive(AR, "/")
+    return check("webhook", "webhook token with trailing newline: no 500, app alive", ok, "st=%s" % st)
+webhook_token_trailing_newline()
+
+def parallel_confirm_two_rids():
+    r1, s1, _ = bo_hold("rt-113pc", "k113pc1")
+    r2, s2, _ = bo_hold("rt-113pc", "k113pc2")
+    if not (r1 and r2):
+        return check("race", "parallel confirm two rids: skipped (holds unavailable)", True, "s1=%s s2=%s" % (s1, s2))
+    b1, b2 = json.dumps({"reservation_id": r1, "idempotency_key": "k113pc1c"}).encode(), json.dumps({"reservation_id": r2, "idempotency_key": "k113pc2c"}).encode()
+    with ThreadPoolExecutor(2) as ex:
+        f1 = ex.submit(raw, ER, "POST", "/confirm", b1, sign(KEY, "POST", "/confirm", b1))
+        f2 = ex.submit(raw, ER, "POST", "/confirm", b2, sign(KEY, "POST", "/confirm", b2))
+        st3, _ = f1.result(); st4, _ = f2.result()
+    time.sleep(0.3)
+    ok = all(x != 500 and x != -1 for x in (st3, st4)) and conserved() and bo_bo_alive(ER)
+    return check("race", "parallel confirm of two different rids: no 5xx, conserved", ok, "c1=%s c2=%s" % (st3, st4))
+parallel_confirm_two_rids()
+
+def circular_transfer():
+    rA, sA, _ = bo_hold("rt-113a", "k113a")
+    if not rA:
+        return check("state", "circular transfer: skipped (hold unavailable)", True, "sA=%s" % sA)
+    st2, _ = post(ER, "/transfer", {"reservation_id": rA, "to_user": "rt-113b"})
+    st3, _ = post(ER, "/transfer", {"reservation_id": rA, "to_user": "rt-113c"})
+    st4, _ = post(ER, "/transfer", {"reservation_id": rA, "to_user": "rt-113a"})
+    time.sleep(0.2)
+    ok = all(x != 500 and x != -1 for x in (st2, st3, st4)) and conserved() and bo_bo_alive(ER)
+    return check("state", "circular transfer A-B-C-A: no 5xx, conserved", ok, "t=%s/%s/%s" % (st2, st3, st4))
+circular_transfer()
+
+def waitlist_idem_long():
+    st, j = post(ER, "/waitlist", {"user_id": "rt-113wi", "idempotency_key": "w" * 5000, "seats": 1})
+    ok = st != 500 and st != -1 and conserved() and bo_bo_alive(ER)
+    return check("fuzz", "waitlist idempotency_key 5000 chars: graceful, conserved", ok, "st=%s" % st)
+waitlist_idem_long()
+
+def app_board_negative_limit():
+    st, j = raw(AR, "GET", "/api/board?limit=-1")
+    ok = st != 500 and st != -1 and bo_bo_alive(AR, "/")
+    return check("app", "app /api/board negative limit: no 500, app alive", ok, "st=%s" % st)
+app_board_negative_limit()
+
+def put_reserve_signed():
+    body = json.dumps({"user_id": "rt-113pr", "idempotency_key": "k113pr", "seats": 1}).encode()
+    h = sign(KEY, "PUT", "/reserve", body)
+    st, _ = raw(ER, "PUT", "/reserve", body, h)
+    ok = st != 500 and st != -1 and conserved() and bo_bo_alive(ER)
+    return check("fuzz", "PUT /reserve with valid signature: no 5xx, conserved", ok, "st=%s" % st)
+put_reserve_signed()
+
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]
 findings = [r for r in results if r["ok"] and "finding" in r["name"].lower()]
