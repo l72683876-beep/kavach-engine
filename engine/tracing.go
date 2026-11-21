@@ -78,6 +78,16 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// Flush forwards http.Flusher to the wrapped writer so streaming handlers
+// (the replication WAL tail and any SSE-style endpoint) keep flushing under
+// the tracing and monitor middlewares: without this the wrapped writer no
+// longer satisfies http.Flusher, which broke the replication stream.
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // tracingMiddleware wraps the mux with one request span each. Disabled
 // (tracer nil) it returns the original handler unchanged: zero overhead.
 func (e *Engine) tracingMiddleware(next http.Handler) http.Handler {

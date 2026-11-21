@@ -292,7 +292,9 @@ func streamLogFrom(w http.ResponseWriter, r *http.Request, base string, after in
 		if err := enc.Encode(f); err != nil {
 			return false
 		}
-		flusher.Flush()
+		if flusher != nil {
+			flusher.Flush()
+		}
 		return true
 	}
 	for {
