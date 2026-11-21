@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26'
       - name: Measure Go unit test coverage
         run: go test -coverpkg=./... -coverprofile=coverage.out ./...
       - name: Show coverage by function and total
