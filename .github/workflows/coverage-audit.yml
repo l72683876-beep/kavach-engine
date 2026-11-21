@@ -1,0 +1,24 @@
+name: Go coverage audit
+on:
+  push:
+    branches: [fo/coverage-docs-audit]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Measure Go unit test coverage
+        run: go test -coverpkg=./... -coverprofile=coverage.out ./...
+      - name: Show coverage by function and total
+        run: go tool cover -func=coverage.out
+      - name: Save coverage profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-profile
+          path: coverage.out
