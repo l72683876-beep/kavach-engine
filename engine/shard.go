@@ -46,6 +46,7 @@ type ShardRouter struct {
 	shards []*Engine
 }
 
+// NewShardRouter spreads events across the given engines.
 func NewShardRouter(shards []*Engine) *ShardRouter { return &ShardRouter{shards: shards} }
 
 func (sr *ShardRouter) pick(ev string) *Engine {
@@ -196,8 +197,11 @@ type probeWriter struct {
 
 func newProbeWriter() *probeWriter { return &probeWriter{hdr: make(http.Header)} }
 
+// Header returns the probe's response headers.
 func (p *probeWriter) Header() http.Header { return p.hdr }
 
+// Write buffers the probe's response body and records an implicit 200 when
+// no status was set.
 func (p *probeWriter) Write(b []byte) (int, error) {
 	if p.status == 0 {
 		p.status = http.StatusOK
@@ -205,6 +209,7 @@ func (p *probeWriter) Write(b []byte) (int, error) {
 	return p.body.Write(b)
 }
 
+// WriteHeader records the first status written and ignores later calls.
 func (p *probeWriter) WriteHeader(status int) {
 	if p.status == 0 {
 		p.status = status

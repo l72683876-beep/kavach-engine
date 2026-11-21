@@ -60,6 +60,7 @@ const (
 	seatSold = int32(2)
 )
 
+// Inventory is one event's seat map: a fixed slice of seat states plus the
 type Inventory struct {
 	seats  []int32
 	offset int // first GLOBAL seat index this slice owns (cluster mode)
@@ -68,6 +69,8 @@ type Inventory struct {
 	held   int64
 }
 
+// NewInventory creates an inventory with n seats; seat 0 of this slice is
+// global seat offset.
 func NewInventory(n, offset int) *Inventory {
 	return &Inventory{seats: make([]int32, n), offset: offset}
 }
@@ -247,6 +250,8 @@ type bucket struct {
 	last   time.Time
 }
 
+// Limiter is a per-key token-bucket rate limiter; a rate of 0 or less
+// disables it.
 type Limiter struct {
 	mu     sync.Mutex
 	rate   float64 // tokens per second
@@ -254,6 +259,7 @@ type Limiter struct {
 	bucket map[string]*bucket
 }
 
+// NewLimiter allows rate tokens per second, burst at peak.
 func NewLimiter(rate, burst float64) *Limiter {
 	return &Limiter{rate: rate, burst: burst, bucket: make(map[string]*bucket)}
 }
@@ -265,6 +271,7 @@ type rateLimiter interface {
 	Allow(key string) bool
 }
 
+// Allow reports whether key may make one more request.
 func (l *Limiter) Allow(key string) bool {
 	if l.rate <= 0 { // 0 disables this layer
 		return true
@@ -305,6 +312,7 @@ func newAuthWithTenantSecrets(keySpec, secret, tenantSecretSpec string) *Auth {
 	return a
 }
 
+// Auth verifies HMAC-signed requests and rejects replays inside a nonce
 type Auth struct {
 	mu      sync.Mutex
 	enabled bool
@@ -315,6 +323,8 @@ type Auth struct {
 	nonces  map[string]int64  // request id -> expiry unix
 }
 
+// NewAuth builds the authenticator from a key specification and shared
+// secret; an empty keySpec leaves auth disabled.
 func NewAuth(keySpec, secret string) *Auth {
 	a := &Auth{keys: map[string]string{}, nonces: map[string]int64{}, window: 300}
 	if keySpec != "" {
@@ -434,6 +444,7 @@ func (a *Auth) pruneNonces() {
 
 // ---------- idempotency (a retry never double-books) ----------
 
+// Result is the engine's response payload for one booking attempt.
 type Result struct {
 	Status    string `json:"status"`
 	Seats     []int  `json:"seats,omitempty"`
@@ -447,11 +458,14 @@ type idemEntry struct {
 	LastSeen    time.Time
 }
 
+// IdemStore remembers results by tenant and idempotency key so a retry
+// returns the same outcome instead of double-booking.
 type IdemStore struct {
 	mu sync.Mutex
 	m  map[string]*idemEntry // key = tenant + "|" + idempotency key
 }
 
+// NewIdemStore creates an empty in-memory idempotency store.
 func NewIdemStore() *IdemStore { return &IdemStore{m: make(map[string]*idemEntry)} }
 
 func (s *IdemStore) lookup(tenant, key string) (*idemEntry, bool) {
@@ -551,6 +565,7 @@ func (r *Reservation) allocations() []ItemAlloc {
 	return nil
 }
 
+// Reservation is one booking: its seats, tenant, state and timestamps.
 type Reservation struct {
 	ID          string
 	Tenant      string
@@ -654,12 +669,15 @@ func (r *Reservation) transition(from, to int32) bool {
 	return atomic.CompareAndSwapInt32(&r.State, from, to)
 }
 
+// ReservationStore keeps reservations in memory, indexed by id and by
+// idempotency key.
 type ReservationStore struct {
 	mu        sync.Mutex
 	m         map[string]*Reservation
 	idemIndex map[string]string // tenant|key -> reservation id
 }
 
+// NewReservationStore creates an empty reservation store.
 func NewReservationStore() *ReservationStore {
 	return &ReservationStore{m: map[string]*Reservation{}, idemIndex: map[string]string{}}
 }
@@ -729,12 +747,14 @@ type WaitEntry struct {
 
 var waitlistSeq uint64
 
+// Waitlist is the in-memory FIFO line for sold-out events.
 type Waitlist struct {
 	mu    sync.Mutex
 	order []*WaitEntry
 	idem  map[string]string // tenant|key -> waitlist id
 }
 
+// NewWaitlist creates an empty waitlist.
 func NewWaitlist() *Waitlist { return &Waitlist{idem: map[string]string{}} }
 
 // waitlistStore is the pluggable line behind the engine: the in-memory FIFO
@@ -864,11 +884,14 @@ func (w *Waitlist) popReady(inv *Inventory) (*WaitEntry, []int, bool) {
 
 // ---------- latency sampling ----------
 
+// LatencyRing is a fixed-size ring buffer of recent latencies in
+// microseconds.
 type LatencyRing struct {
 	buf []int64 // microseconds
 	n   uint64
 }
 
+// NewLatencyRing remembers the last size latency samples.
 func NewLatencyRing(size int) *LatencyRing { return &LatencyRing{buf: make([]int64, size)} }
 
 func (r *LatencyRing) add(us int64) {
@@ -907,6 +930,8 @@ type commitReq struct {
 	errCh  chan error
 }
 
+// GroupCommit batches durability writes so many reservations share one
+// append and flush.
 type GroupCommit struct {
 	ch   chan commitReq
 	file *os.File
@@ -921,6 +946,8 @@ type GroupCommit struct {
 	flushPos     int64
 }
 
+// NewGroupCommit opens the append-only log at path and starts a committer
+// with a queue of queue requests.
 func NewGroupCommit(path string, queue int) (*GroupCommit, error) {
 	// append mode: the log survives restarts (recovery replays it), so a
 	// boot must never truncate it
@@ -1138,6 +1165,8 @@ type job struct {
 	resp   chan Result
 }
 
+// Engine ties one inventory, its stores and limiters together and serves
+// the HTTP API.
 type Engine struct {
 	inv          *Inventory
 	skus         map[string]*Inventory // named SKU inventories (v2.4); the -seats inventory stays the default

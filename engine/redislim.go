@@ -47,6 +47,8 @@ redis.call('PEXPIRE', KEYS[1], math.floor(ttl))
 return allowed
 `)
 
+// RedisLimiter keeps shared token buckets in Redis so the whole cluster
+// enforces the same rate limits.
 type RedisLimiter struct {
 	rdb    *goredis.Client
 	prefix string

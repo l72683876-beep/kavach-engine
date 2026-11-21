@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// PgSink ships committed reservations to Postgres via pgx.
 type PgSink struct {
 	nodeID  string
 	shipped *int64

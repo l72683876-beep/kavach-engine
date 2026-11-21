@@ -66,11 +66,14 @@ type statusWriter struct {
 	status int
 }
 
+// WriteHeader records the status code before passing it through.
 func (w *statusWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Write records an implicit 200 when no status was set, then passes the
+// bytes through.
 func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
@@ -107,6 +110,7 @@ func (e *Engine) tracingMiddleware(next http.Handler) http.Handler {
 
 type httpError struct{ status int }
 
+// Error formats the status code as an "http <code>" string.
 func (e httpError) Error() string { return "http " + itoa(e.status) }
 
 func itoa(i int) string {

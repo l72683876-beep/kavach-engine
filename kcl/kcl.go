@@ -61,11 +61,13 @@ type ParseError struct {
 	Msg  string
 }
 
+// Error reports the failing KCL line number and message.
 func (e *ParseError) Error() string { return fmt.Sprintf("line %d: %s", e.Line, e.Msg) }
 
 // lineErrors collects every bad line and reports them together.
 type lineErrors []*ParseError
 
+// Error joins every collected bad line so one report shows all of them.
 func (es lineErrors) Error() string {
 	parts := make([]string, len(es))
 	for i, e := range es {
