@@ -313,6 +313,11 @@ type Auth struct {
 	secrets map[string][]byte // optional per-tenant HMAC secrets (tenant -> secret)
 	window  int64             // timestamp tolerance in seconds
 	nonces  map[string]int64  // request id -> expiry unix
+
+	// onVerify, when non-nil, receives every verify() outcome so the
+	// engine-wide monitor can count auth failures and replays per identity.
+	// Observation only: verify's result is returned unchanged.
+	onVerify func(r *http.Request, tenant string, status int, reason string)
 }
 
 func NewAuth(keySpec, secret string) *Auth {
@@ -355,6 +360,16 @@ func (a *Auth) setTenantSecrets(spec string) {
 // verify authenticates the request. body is the raw request body (may be nil
 // for GET). Returns the tenant, or a non-zero HTTP status on rejection.
 func (a *Auth) verify(r *http.Request, body []byte) (string, int, string) {
+	tenant, st, msg := a.verifyCore(r, body)
+	if a.onVerify != nil {
+		a.onVerify(r, tenant, st, msg)
+	}
+	return tenant, st, msg
+}
+
+// verifyCore is the auth check proper; verify wraps it with the monitor's
+// observation hook (which changes nothing about the decision).
+func (a *Auth) verifyCore(r *http.Request, body []byte) (string, int, string) {
 	if !a.enabled {
 		return "local", 0, ""
 	}
@@ -2472,6 +2487,18 @@ func main() {
 	chaosStallMs := flag.Int("chaos-stall-ms", 0, "chaos: inject random worker stalls up to this many ms (0 = off)")
 	chaosProb := flag.Float64("chaos-prob", 0, "chaos: probability a request hits a stall")
 	chaosPanic := flag.Float64("chaos-panic", 0, "chaos: probability a worker panics (contained; the engine survives)")
+	monitorWebhook := flag.String("monitor-webhook", "", "monitoring: POST JSON alerts for suspicious traffic to this URL (empty = log-only alerts)")
+	monitorLog := flag.String("monitor-log", "alerts.jsonl", "monitoring: append alerts as JSON lines here (empty = no alert file)")
+	monitorLogMaxMB := flag.Int("monitor-log-max-mb", 5, "monitoring: rotate the alert log at this size (one previous generation kept)")
+	monitorWindow := flag.Int("monitor-window", 60, "monitoring: evaluation window in seconds")
+	monitorMaxIdent := flag.Int("monitor-max-identities", 10000, "monitoring: maximum identities tracked per window (bounded memory)")
+	monitorAuthBurst := flag.Int("monitor-auth-burst", 20, "monitoring: alert after this many failed auths from one identity in a window (0 = off)")
+	monitorReplayBurst := flag.Int("monitor-replay-burst", 5, "monitoring: alert after this many replays from one identity in a window (0 = off)")
+	monitorLimitedBurst := flag.Int("monitor-limited-burst", 30, "monitoring: alert after this many rate-limited (429) responses to one identity in a window (0 = off)")
+	monitorFlood := flag.Int("monitor-flood", 300, "monitoring: alert after this many requests from one identity in a window (0 = off)")
+	monitorErrSpike := flag.Int("monitor-error-spike", 10, "monitoring: alert after this many 5xx responses engine-wide in a window (0 = off)")
+	monitorCooldown := flag.Int("monitor-cooldown-seconds", 30, "monitoring: minimum seconds between two alerts of the same type for one identity")
+	monitorOff := flag.Bool("monitor-off", false, "monitoring: turn the engine-wide monitor off (default on, observation only)")
 	otelEndpoint := flag.String("otel-endpoint", "", "OpenTelemetry: OTLP/HTTP endpoint to export request spans to, e.g. http://localhost:4318 (empty = tracing off)")
 	otelRatio := flag.Float64("otel-ratio", 1, "OpenTelemetry: trace sample ratio 0..1 (1 = trace every request)")
 	apiKeys := flag.String("api-keys", "", "API keys as key:tenant,key:tenant (empty = local mode, auth off)")
@@ -2616,6 +2643,29 @@ func main() {
 		}
 	}
 	auth := newAuthWithTenantSecrets(*apiKeys, *secret, *tenantSecrets)
+	// engine-wide suspicious-activity monitor: observation only. It never
+	// blocks, slows or alters a request; see docs/MONITORING.md. The
+	// existing rate limiters keep enforcing and can still reject a genuine
+	// user over their limits, so no absolute zero-block guarantee exists
+	// for the engine as a whole; the monitor adds no new blocking.
+	mon := NewMonitor(MonitorConfig{
+		Window:        time.Duration(*monitorWindow) * time.Second,
+		MaxIdentities: *monitorMaxIdent,
+		AuthBurst:     *monitorAuthBurst,
+		ReplayBurst:   *monitorReplayBurst,
+		LimitedBurst:  *monitorLimitedBurst,
+		Flood:         *monitorFlood,
+		ErrorSpike:    *monitorErrSpike,
+		AlertLog:      *monitorLog,
+		AlertLogMaxMB: *monitorLogMaxMB,
+		Webhook:       *monitorWebhook,
+		Cooldown:      time.Duration(*monitorCooldown) * time.Second,
+		Off:           *monitorOff,
+	})
+	if mon != nil {
+		auth.onVerify = mon.NoteAuth
+		log.Printf("monitoring: on (observation only: alerts never block, slow or alter a request; webhook=%q log=%q)", *monitorWebhook, *monitorLog)
+	}
 	idem := NewIdemStore()
 	perShardWorkers := *workers / nShards
 	if perShardWorkers < 1 {
@@ -2917,6 +2967,9 @@ func main() {
 	http.HandleFunc("/seats/state", sr.route((*Engine).handleSeatsState, false))
 	http.HandleFunc("/metrics", sr.handleMetrics)
 	http.HandleFunc("/metrics/prometheus", sr.handleMetricsProm)
+	if mon != nil {
+		http.HandleFunc("/monitor", mon.handleStatus) // observation counters; no identities, no request data
+	}
 	mode := "local (auth off)"
 	if e.auth.enabled {
 		mode = "authenticated"
@@ -2931,5 +2984,5 @@ func main() {
 		defer shutdownTracing(context.Background())
 		log.Printf("kavach: otel tracing on, endpoint %s, sample ratio %.2f", *otelEndpoint, *otelRatio)
 	}
-	log.Fatal(http.ListenAndServe(*addr, e.tracingMiddleware(methodGuard(http.DefaultServeMux))))
+	log.Fatal(http.ListenAndServe(*addr, mon.middleware(e.tracingMiddleware(methodGuard(http.DefaultServeMux)))))
 }
