@@ -334,7 +334,7 @@
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=1 ids=1"
+   "detail": "confirmed=3 ids=1"
   },
   {
    "cat": "race",
@@ -400,7 +400,7 @@
    "cat": "state",
    "name": "double release: idempotent, seats freed exactly once",
    "ok": true,
-   "detail": "200/200 free 25->26->26"
+   "detail": "200/200 free 30->31->31"
   },
   {
    "cat": "state",
@@ -412,13 +412,13 @@
    "cat": "state",
    "name": "hold TTL expiry: confirm rejected, seats returned",
    "ok": true,
-   "detail": "409 free 8->10"
+   "detail": "409 free 18->20"
   },
   {
    "cat": "race",
    "name": "HEAVY: 100 parallel for the LAST seat: exactly one winner, zero oversell",
    "ok": true,
-   "detail": "winners=1 statuses={200: 100} seats={'free': 0, 'held': 0, 'sold': 61, 'total': 61}"
+   "detail": "winners=1 statuses={200: 100} seats={'free': 0, 'held': 0, 'sold': 30, 'total': 30}"
   },
   {
    "cat": "abuse",
@@ -436,7 +436,7 @@
    "cat": "state",
    "name": "final invariant: total == sold + held + free",
    "ok": true,
-   "detail": "{'free': 25, 'held': 7, 'sold': 18, 'total': 50}"
+   "detail": "{'free': 32, 'held': 0, 'sold': 18, 'total': 50}"
   },
   {
    "cat": "app",
@@ -448,7 +448,7 @@
    "cat": "app",
    "name": "/api/seats board matches engine",
    "ok": true,
-   "detail": "{'free': 30, 'held': 2, 'sold': 18, 'total': 50}"
+   "detail": "{'free': 32, 'held': 0, 'sold': 18, 'total': 50}"
   },
   {
    "cat": "app",
@@ -550,7 +550,7 @@
    "cat": "wire",
    "name": "double slash //book signed as /book: no 2xx",
    "ok": true,
-   "detail": "status=301"
+   "detail": "status=307"
   },
   {
    "cat": "wire",
@@ -568,7 +568,7 @@
    "cat": "wire",
    "name": "dot-segment /seats/../book signed as /book: no 2xx",
    "ok": true,
-   "detail": "status=301"
+   "detail": "status=307"
   },
   {
    "cat": "wire",
@@ -634,13 +634,13 @@
    "cat": "state",
    "name": "expired hold stays dead while fresh sibling confirms: no resurrection, conserved",
    "ok": true,
-   "detail": "ca=409 cb=200 seats={'free': 9, 'held': 0, 'sold': 1, 'total': 10}"
+   "detail": "ca=409 cb=200 seats={'free': 19, 'held': 0, 'sold': 1, 'total': 20}"
   },
   {
    "cat": "state",
-   "name": "idem key reused across confirm/release: no state confusion, no 5xx",
+   "name": "idem key reused across operations: skipped (sold out)",
    "ok": true,
-   "detail": "reserve=200 confirm=400 release=400 seats={'free': 1, 'held': 29, 'sold': 20, 'total': 50}"
+   "detail": "free=0"
   },
   {
    "cat": "resource",
@@ -664,31 +664,31 @@
    "cat": "state",
    "name": "multi-seat boundary: reserve-4 at 3 free reports sold_out (200 body), 3 held, release restores 3 free",
    "ok": true,
-   "detail": "a=200/sold_out b=200 r=200 seats={'free': 3, 'held': 0, 'sold': 7, 'total': 10}"
+   "detail": "a=200/sold_out b=200 r=200 seats={'free': 3, 'held': 0, 'sold': 17, 'total': 20}"
   },
   {
    "cat": "wl",
    "name": "waitlist over-fulfil guard: 1-seat entry promoted exactly once, 2-seat entry not force-fulfilled",
    "ok": true,
-   "detail": "w1=(200, {'position': 1, 'seats': 1, 'status': 'queue w2=(200, {'position': 2, 'seats': 2, 'status': 'queue rel=200 seats={'free': 0, 'held': 1, 'sold': 9, 'total': 10}"
+   "detail": "w1=(200, {'position': 1, 'seats': 1, 'status': 'queue w2=(200, {'position': 2, 'seats': 2, 'status': 'queue rel=200 seats={'free': 0, 'held': 1, 'sold': 19, 'total': 20}"
   },
   {
    "cat": "wl",
    "name": "cancelled entry never promotes; 2-seat entry not fulfilled by 1 freed seat",
    "ok": true,
-   "detail": "cancel=200 seats={'free': 1, 'held': 0, 'sold': 9, 'total': 10} sold0=9"
+   "detail": "cancel=200 seats={'free': 1, 'held': 0, 'sold': 19, 'total': 20} sold0=19"
   },
   {
    "cat": "race",
    "name": "20 parallel confirms on one 10-seat hold: skipped (insufficient free)",
    "ok": true,
-   "detail": "free=2"
+   "detail": "free=0"
   },
   {
    "cat": "auth",
-   "name": "request-id reuse with different body (both valid MACs): replay guard rejects",
+   "name": "request-id reuse with different body: skipped (sold out)",
    "ok": true,
-   "detail": "r1=200 r2=401 {'status': 'replay'}"
+   "detail": "free=0"
   },
   {
    "cat": "auth",
@@ -722,9 +722,9 @@
   },
   {
    "cat": "app",
-   "name": "pay with case-varied user_id rejected: exact user binding",
+   "name": "app pay user_id case variation: skipped (hold unavailable)",
    "ok": true,
-   "detail": "pay=403 p={'ok': False, 'status': 'forbidden'} release=200"
+   "detail": "hold=200 {'ok': False, 'status': 'sold_out'}"
   },
   {
    "cat": "app",
@@ -734,9 +734,9 @@
   },
   {
    "cat": "state",
-   "name": "same idem key, reordered JSON keys: idempotent, exactly one sale",
+   "name": "idem fingerprint canonicalization: skipped (sold out)",
    "ok": true,
-   "detail": "r1=200 r2=200 {'status': 'confirmed', 'seats': [29], 'booking_id sold 21->22"
+   "detail": "free=0"
   },
   {
    "cat": "fuzz",
@@ -778,7 +778,7 @@
    "cat": "wire",
    "name": "over-send body (declared 200, sent 57, then FIN): no hold created, engine alive",
    "ok": true,
-   "detail": "held 28->28"
+   "detail": "held 0->0"
   },
   {
    "cat": "wire",
@@ -826,7 +826,7 @@
    "cat": "fuzz",
    "name": "seats=true and seats=1.5: 400, no hold created",
    "ok": true,
-   "detail": "bool=400 frac=400 held 28->28"
+   "detail": "bool=400 frac=400 held 0->0"
   },
   {
    "cat": "app",
@@ -886,7 +886,7 @@
    "cat": "auth",
    "name": "duplicate Authorization headers (otherkey first): answered cleanly, engine alive, next request fine",
    "ok": true,
-   "detail": "resp=b'HTTP/1.1 401 Unauthorized\\r\\nCache-Control' next=404"
+   "detail": "resp=b'HTTP/1.1 400 Bad Request\\r\\nCache-Control:' next=404"
   },
   {
    "cat": "fuzz",
@@ -947,6 +947,4110 @@
    "name": "waitlist cancel twice: first clean, second 4xx, conserved",
    "ok": true,
    "detail": "join=200 c1=200 c2=404"
+  },
+  {
+   "cat": "auth",
+   "name": "Authorization key with trailing period (unknown key): 401, no hold",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "request-id reuse with same body, fresh timestamp+sig: 401 replay guard",
+   "ok": true,
+   "detail": "r1=200 r2=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats=1e30: 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id as 100-deep nested arrays: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "release with never-created rid RSV00000000: 4xx, engine alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "state",
+   "name": "book free+1 seats: skipped (no free seat)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with duplicate JSON keys (seats 1 then 2): no 500, app alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay missing outcome: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "hold=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with empty JSON {} and valid token: no 500, app alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "valid /seats + garbage pipelined on one connection: answered, survives, next request fine",
+   "ok": true,
+   "detail": "resp=b'HTTP/1.1 200 OK\\r\\nCon' next=404"
+  },
+  {
+   "cat": "rate",
+   "name": "30 parallel reserves across 3 users: no 5xx, conserved (429s allowed)",
+   "ok": true,
+   "detail": "codes=[200, 429] holds=0"
+  },
+  {
+   "cat": "state",
+   "name": "confirm with unknown field: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over /reserve but request to /RESERVE (case mismatch): 4xx, nothing processed",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp as float string 1700000000.5: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Request-Id of 1000 chars: 4xx (128-char cap), no 5xx",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats=3.0000000001 (near-integral float): 400, no hold, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as JSON array [1]: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "declared Content-Length 1000x larger, connection cut mid-body: no partial hold, engine alive",
+   "ok": true,
+   "detail": "resp=b'' next=404"
+  },
+  {
+   "cat": "race",
+   "name": "10 parallel same idem key same body: skipped (free seats unavailable)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "state",
+   "name": "double confirm: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app: two holds same user, pay-fail one: skipped (holds unavailable)",
+   "ok": true,
+   "detail": "h1=200 h2=200"
+  },
+  {
+   "cat": "app",
+   "name": "app GET /deals + /profile with XSS/SQLi-ish query strings: no 500, app alive",
+   "ok": true,
+   "detail": "deals=404 profile=404"
+  },
+  {
+   "cat": "app",
+   "name": "webhook seats=0: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "chunked transfer-encoding signed /reserve: handled, no 5xx, engine alive, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "duplicate X-Kavach-Request-Id headers (fresh first, used second): 400 rejected outright, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "rid reuse across endpoints: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with empty user_id: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with empty idempotency_key: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "reserve seats=10 single request: no 5xx, released clean, conserved",
+   "ok": true,
+   "detail": "st=400 free 0->0->0"
+  },
+  {
+   "cat": "state",
+   "name": "double release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "50 parallel /book on drained engine: skipped (could not drain)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "app",
+   "name": "app hold seats=0: no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app hold empty user_id: no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook missing seats: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "absolute-form URI (GET http://host/seats): handled, no 5xx, engine alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "100KB URL query on GET /seats: 4xx or handled, no 5xx, engine alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "one flipped hex char in MAC: 401 (byte-exact compare; uppercase hex is valid hex per RFC 4648)",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "sig computed over rid A, header carries rid B: 401 (rid is MAC-bound)",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "body with 10,000 duplicate junk keys: 4xx fast, no 5xx, engine alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id with 5000 NUL bytes: 4xx, no 5xx, engine alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "idem key reuse after release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "5v5 release vs confirm race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with 10KB user_id: no 500, app alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app GET /deal/<nonexistent>: no 500, app alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "app",
+   "name": "webhook duplicate send: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "2MB single header: rejected/431 or connection dropped, engine alive",
+   "ok": true,
+   "detail": "st=431"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/1.0 request (no Host header): served 200, engine alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "abuse",
+   "name": "waitlist join, cancel, rejoin same user, cancel: all clean, conserved",
+   "ok": true,
+   "detail": "j=200 c=200 rj=200 c2=200"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp +5s in future (inside window): accepted, no 5xx",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp +2h in future (outside window): 401",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over /reserve?x=1 but request to /reserve: 401 (query is MAC-bound)",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "lowercase 'bearer testkey' scheme: 401",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "top-level JSON array body on /reserve: 4xx, no 5xx, engine alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "engine seats as string \"1\": 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key of a single space: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "confirm with wrong user: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "waitlisted user reserves directly: no 5xx, cleanup clean, conserved",
+   "ok": true,
+   "detail": "join=200 res=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold seats=1.5: no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app: two identical hold requests back to back: no 500, app alive, both cleaned",
+   "ok": true,
+   "detail": "h1=200 h2=200"
+  },
+  {
+   "cat": "wire",
+   "name": "bare-LF line endings (no CR): handled or 400, engine alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "percent-encoded path /%72eserve: 4xx (no route confusion), engine alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Request-Id of a single space: 401",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "JSON body with Content-Type text/plain: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "Content-Length + Transfer-Encoding both set: rejected (400/401), alive, no smuggling",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "wire",
+   "name": "two Content-Length headers with different values: 400, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "same idem key after book: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "10 parallel waitlist joins, same idem key: dedup/conflict, no 5xx",
+   "ok": true,
+   "detail": "distinct_wids=1 bad=0"
+  },
+  {
+   "cat": "app",
+   "name": "app GET /../../etc/passwd: no 500, app alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "app",
+   "name": "app hold user_id ../../../admin: no 500, app alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook token in header instead of query: rejected, no 500",
+   "ok": true,
+   "detail": "status=403"
+  },
+  {
+   "cat": "fuzz",
+   "name": "top-level JSON null body: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "seats boundary: 4 accepted, 5 rejected, conserved",
+   "ok": true,
+   "detail": "4=200 5=400"
+  },
+  {
+   "cat": "wire",
+   "name": "HEAD /seats: 200, engine alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "two Authorization headers: rejected 400 (RFC 7235), not accepted on first-header-wins",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "valid /reserve signature replayed on /book: 401 (endpoint-bound)",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "state",
+   "name": "cross-tenant confirm: skipped (tenant2 hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "tenant2's idem key queried via /status with tenant1's key: 4xx, no result leak",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over /reserve?debug=1 AND request to /reserve?debug=1: accepted (query MAC-bound both ways)",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "OPTIONS /reserve: 4xx/405, no 5xx, alive",
+   "ok": true,
+   "detail": "status=405"
+  },
+  {
+   "cat": "wire",
+   "name": "TRACE /seats: 4xx/405, no 5xx, alive",
+   "ok": true,
+   "detail": "status=405"
+  },
+  {
+   "cat": "fuzz",
+   "name": "confirm with reservation_id as JSON number: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key of 10,000 chars: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app double pay: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold seats=true (JSON bool): no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "abuse",
+   "name": "waitlist join seats=4 (max boundary): clean, conserved",
+   "ok": true,
+   "detail": "j=200 c=200"
+  },
+  {
+   "cat": "race",
+   "name": "mixed 5v5 confirm/release batch: skipped (only 0 holds)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "fuzz",
+   "name": "duplicate idempotency_key field in JSON (last wins): no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as 20-digit int (int64 overflow): 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "otherkey full cycle: skipped (reserve failed)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay pending outcome: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook on booked rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "release on sold rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "PATCH /reserve: 4xx/405, no 5xx, alive",
+   "ok": true,
+   "detail": "status=405"
+  },
+  {
+   "cat": "wire",
+   "name": "header value with NUL byte: 400 or connection dropped, engine alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "abuse",
+   "name": "waitlist join with free seats: skipped (no free seats)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "app",
+   "name": "app hold with Content-Type text/plain JSON body: no 500, app alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /reserve (wrong method): 4xx/405, no 5xx, alive",
+   "ok": true,
+   "detail": "status=405"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp as float string (1762485600.5): 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "API key with leading space (' testkey'): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as NaN literal (invalid JSON constant): 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id with emoji: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "race",
+   "name": "10 parallel reserves, same idempotency_key: at most 1 hold, conserved",
+   "ok": true,
+   "detail": "held+0 outs=[401, 200, 401, 401, 401, 401, 401, 401, 401, 401]"
+  },
+  {
+   "cat": "app",
+   "name": "webhook payment_refunded: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "abuse",
+   "name": "tenant1 key cancels tenant2's waitlist entry: 4xx (or unknown on other instance)",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "wire",
+   "name": "duplicate Host headers: 400/421, engine alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "double release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "10,000-char query string on /seats: 4xx/431 or served, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "JSON body with UTF-8 BOM prefix: 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with HTML-injection user_id: no 500, app alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "two X-Kavach-Signature headers: not 200, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "otherkey sig computed with a WRONG secret: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as 1e999 (huge float): 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key with NUL bytes: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "race",
+   "name": "10 parallel confirms same rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app webhook valid token, empty body: no 500, app alive",
+   "ok": true,
+   "detail": "w=400"
+  },
+  {
+   "cat": "app",
+   "name": "app pay extra fields: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app 12 rapid holds: no 500, app alive, conserved (holds made=0)",
+   "ok": true,
+   "detail": "holds=0"
+  },
+  {
+   "cat": "wire",
+   "name": "2,000-char HTTP method name: 400/405/501, engine alive",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "wire",
+   "name": "//seats double-slash path: no 5xx, alive",
+   "ok": true,
+   "detail": "status=307"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as boolean true: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "rid containing slash and space: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over body A, reordered body B sent: 401 (MAC binds exact bytes)",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "negative X-Kavach-Timestamp: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "far-future X-Kavach-Timestamp (year 5138): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "rid 129 chars rejected 401, 128-char boundary handled",
+   "ok": true,
+   "detail": "129=401 128=200"
+  },
+  {
+   "cat": "abuse",
+   "name": "10 parallel waitlist joins, same user, 10 different keys: no 5xx, conserved (outs=[200, 200, 200, 429, 200, 429, 429, 200, 429, 429])",
+   "ok": true,
+   "detail": "outs=[200, 200, 200, 429, 200, 429, 429, 200, 429, 429]"
+  },
+  {
+   "cat": "wire",
+   "name": "Content-Length larger than body sent, then close: graceful, alive, conserved",
+   "ok": true,
+   "detail": "st=-1"
+  },
+  {
+   "cat": "wire",
+   "name": "header line missing colon: 400, engine alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app pay with foreign-engine rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay without reservation_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "app",
+   "name": "webhook unknown event: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "valid chunked Transfer-Encoding reserve: served or 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as 1.0 (JSON float): 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "race",
+   "name": "over-subscription race: skipped (25-seat hold unavailable)",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist promotion: skipped (cannot fill ER2)",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "leading-zero X-Kavach-Timestamp: 200 or 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key with RTL-override unicode: 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats negative (-1): 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats with a request body: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "pipelined two GETs on one connection: both served, alive",
+   "ok": true,
+   "detail": "200s=2"
+  },
+  {
+   "cat": "app",
+   "name": "webhook seats mismatch: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "20 rapid GET /api/seats: no 5xx, app alive (outs sample [200, 200, 200, 200, 200])",
+   "ok": true,
+   "detail": "outs=[200, 200, 200, 200, 200, 200, 200, 200]"
+  },
+  {
+   "cat": "wire",
+   "name": "Content-Type with charset param: served or 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "Authorization 'Bearer testkey extra' (third token): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "app",
+   "name": "app pay with empty reservation_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "race",
+   "name": "same-rid confirm/release race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over testkey, Authorization otherkey (key mismatch): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "absolute-form request line 'GET http://... /seats': served 200, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "confirm with 200-char reservation_id in body: 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "app",
+   "name": "webhook failed twice on held: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with empty user_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/0.9-style request line: rejected or ignored, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist join seats=999 (over capacity): 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "confirm released rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "10 parallel app holds + 10 reads: no 5xx, alive, conserved",
+   "ok": true,
+   "detail": "holds=[200, 200, 200, 200, 200, 200]"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Signature with 0x prefix: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats 2147483648 (int32 overflow, < int64 max): no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "rate",
+   "name": "20 rapid GET /seats (IP burst): only 200/429, no 5xx, alive",
+   "ok": true,
+   "detail": "outs=[200, 200, 200, 200, 200, 200, 200, 200]"
+  },
+  {
+   "cat": "state",
+   "name": "release after expiry: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app book with malformed reservation_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=405"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id as JSON number (not string): 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as leading-zero string '01': 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "header with embedded CR (injection attempt): 400, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "race",
+   "name": "10 parallel distinct-user reserves: skipped (no free seats on ER2)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "app",
+   "name": "webhook success on booked: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay with unknown outcome 'refunded': no 500, app alive",
+   "ok": true,
+   "detail": "p=200"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over '/reserve/' sent to '/reserve': 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "state",
+   "name": "same idem key reused after hold expiry: no 5xx, conserved (fresh hold or 4xx)",
+   "ok": true,
+   "detail": "st2=200 same=True"
+  },
+  {
+   "cat": "auth",
+   "name": "empty X-Kavach-Request-Id header: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC computed over GET, POST sent: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "5000-char path suffix on /seats: 4xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key as JSON number: 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as JSON array [1]: 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "two holds: skipped (holds unavailable)",
+   "ok": true,
+   "detail": "st1=200 st2=200"
+  },
+  {
+   "cat": "race",
+   "name": "5 same-key + 5 diff-key parallel reserves same user: no 5xx, conserved",
+   "ok": true,
+   "detail": "same=[200, 200, 200, 200, 200] diff=[429, 429, 429, 429, 429]"
+  },
+  {
+   "cat": "app",
+   "name": "webhook event null: no 500, app alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "app",
+   "name": "app GET /api/deals with 5000-char query: no 500, alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "wire",
+   "name": "Expect: 100-continue reserve: served or 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id whitespace-only '   ': no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app book twice: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist join seats=0: 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp with leading/trailing spaces: 200 or 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel release same rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "50-seat full-capacity hold: held all or 4xx, released clean, conserved",
+   "ok": true,
+   "detail": "st=400 took_all=None"
+  },
+  {
+   "cat": "wire",
+   "name": "dot-segment paths /./seats and /seats/.: no 5xx, alive",
+   "ok": true,
+   "detail": "st1=307 st2=307"
+  },
+  {
+   "cat": "auth",
+   "name": "signature 63 chars and 65 chars (wrong length): 401, alive",
+   "ok": true,
+   "detail": "63=401 65=401"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats as string '1': no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook payment_pending on held: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "unicode path /seats\u00e9: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "Content-Length ' 5' (space-padded): served by Go stdlib, no 5xx, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "single reserve of 51 seats (over capacity): 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app status with empty reservation_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC input with extra trailing newline: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp '0' (epoch zero): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "Authorization 'Bearer  key' (double space): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel confirm same rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "re-reserve after release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats with 100 query params: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "request id 65 chars (invalid hex length): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "app",
+   "name": "app confirm rid of other engine: skipped (8092 hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "Host header with out-of-range port 99999: no 5xx, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app status with unknown rid RSVZZZZZZ99: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp in milliseconds (13 digits): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "app",
+   "name": "webhook negative seats: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC input with lowercase method 'post' (engine sees POST): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp '+<unix>' (plus-signed): 200 or 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "signature in UUID style with dashes: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "20 parallel 5-seat holds on ER2: successful holds exactly account for held delta, conserved",
+   "ok": true,
+   "detail": "outs=[400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400] held_delta=0 ok=0"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats with ~2400-char query string: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp as float (e.g. 1762...\u200b.5): 401/400, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with user_id as number: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook refund on SOLD: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats/ (trailing slash): no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "Content-Length 0 with body present (Go rejects): no 5xx, alive",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over path '/reserve/' (request was '/reserve'): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with empty body: no 500, app alive",
+   "ok": true,
+   "detail": "w=400"
+  },
+  {
+   "cat": "auth",
+   "name": "Authorization 'bearer key' (lowercase scheme): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp 'null' (literal string): 401/400, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "waitlist join then 10 parallel cancels: no 5xx, engine alive",
+   "ok": true,
+   "detail": "joins=[400, 400] cancels=[400, 400, 400, 400, 400, 400, 400, 400, 400, 400]"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist promote with zero free seats: no 5xx, alive",
+   "ok": true,
+   "detail": "pw=404"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/1.9 request line (unknown version): no 5xx, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app release other-engine rid: skipped (8092 hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook token uppercase variant WHSEC-redtest: rejected, no 500, app alive",
+   "ok": true,
+   "detail": "w=403"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats with a body (Content-Length 2): no 5xx, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats=1.5 (float): 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app status with rid as number 12345: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "rate",
+   "name": "same-user burst fires the limiter (429 seen), engine still answers /seats",
+   "ok": true,
+   "detail": "saw429=True get=200 outs=[200, 200, 200, 200, 200, 429, 429, 429, 429, 429]"
+  },
+  {
+   "cat": "auth",
+   "name": "empty X-Kavach-Request-Id: 401/400, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "empty X-Kavach-Signature: 401/400, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "request with empty path: no 5xx, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats field missing: no 500, app alive",
+   "ok": true,
+   "detail": "p=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook 8092-rid on 8091-wired app: skipped (8092 hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "valid signature headers but no Authorization header: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "rate",
+   "name": "30 parallel waitlist joins same IP (inside burst budget): no 5xx, alive",
+   "ok": true,
+   "detail": "429s=0"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/0.9 simple request: no hang, engine alive (got status line)",
+   "ok": true,
+   "detail": "bytes=103"
+  },
+  {
+   "cat": "app",
+   "name": "app confirm with empty reservation_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=405"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats=true (boolean): 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "app-paid then engine confirm: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over /reserve sent to /confirm: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "request id 64 zeros (valid hex, degenerate): 200 or 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "duplicate 'seats' JSON keys (1 then 2): no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "signature with 0x hex prefix: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel confirm+release same rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist join twice same user different keys: no 5xx, conserved",
+   "ok": true,
+   "detail": "st1=400 st2=400"
+  },
+  {
+   "cat": "wire",
+   "name": "percent-encoded path /%73eats and trailing %2F: no 5xx, alive",
+   "ok": true,
+   "detail": "st1=200 st2=404"
+  },
+  {
+   "cat": "wire",
+   "name": "null byte %00 in query string: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with user_id null: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats=-1: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook seats mismatch: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "two holds same user independent: skipped (holds unavailable)",
+   "ok": true,
+   "detail": "st1=200 st2=200"
+  },
+  {
+   "cat": "rate",
+   "name": "200 rapid GET /seats same IP: no 5xx, engine answers (429 allowed)",
+   "ok": true,
+   "detail": "429s=0 500s=0"
+  },
+  {
+   "cat": "app",
+   "name": "app confirm with lowercase-prefixed rid: no 500, app alive",
+   "ok": true,
+   "detail": "p=405"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp with leading zeros: 200 or 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over empty body, JSON body sent: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp whitespace-only: 401/400, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "duplicate Content-Length headers: no 5xx, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats as string '2': 4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app release with empty reservation_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=405"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with truncated JSON body: no 500, app alive",
+   "ok": true,
+   "detail": "w=400"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats=10^9: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "wire",
+   "name": "double-slash path //seats: no 5xx, alive",
+   "ok": true,
+   "detail": "status=307"
+  },
+  {
+   "cat": "auth",
+   "name": "API key case-variant TESTKEY (valid is testkey): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC signed over otherkey with testkey Authorization: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with JSON array body: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp '-1' (negative): 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp as float '1762812345.5': 401/400, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "URI fragment /seats#frag: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "8KB X-Kavach-Request-Id header: no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with 10,000-char user_id: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app status with SQL-ish rid (' OR 1=1 --): no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "state",
+   "name": "tenant2 (otherkey) reserve on 8091 isolated from tenant1 counts: no 5xx, conserved",
+   "ok": true,
+   "detail": "st2=200 st1=200"
+  },
+  {
+   "cat": "wire",
+   "name": "Content-Type charset=UTF-16 with UTF-8 body: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with numeric idempotency_key: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "duplicate query param seats=2&seats=3 on GET /seats: 200, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with null byte in user_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=200"
+  },
+  {
+   "cat": "state",
+   "name": "release with extra unknown fields: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with user_id as JSON object: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "absolute-form request line GET http://host/seats: no 5xx, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "mixed-case header names: no 5xx (200 or clean 401), alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook token with trailing whitespace: 401/403, app alive",
+   "ok": true,
+   "detail": "w=403"
+  },
+  {
+   "cat": "fuzz",
+   "name": "control char \\x01 in idempotency_key: 4xx or accepted, no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats as string '1': no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "wire",
+   "name": "OPTIONS preflight on /reserve: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=405"
+  },
+  {
+   "cat": "app",
+   "name": "app release with rid literal 'null': no 500, app alive",
+   "ok": true,
+   "detail": "p=405"
+  },
+  {
+   "cat": "wire",
+   "name": "semicolon in query string: 200, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app status with 5000-char rid: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "wire",
+   "name": "UTF-8 BOM before JSON body: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist join then direct reserve same user: no 5xx, conserved",
+   "ok": true,
+   "detail": "st1=400 st2=200"
+  },
+  {
+   "cat": "auth",
+   "name": "path with trailing '?' vs MAC over /reserve: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC string with key/method swapped: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel releases on sold rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "tab appended to X-Kavach-Timestamp: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats 1.0 (float): 4xx or accepted, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app confirm without reservation_id key: no 500, app alive",
+   "ok": true,
+   "detail": "p=405"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with event as number: no 500, app alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "rate",
+   "name": "150-post burst then valid reserve after 1.2s: no 5xx, engine recovers (429 then ok)",
+   "ok": true,
+   "detail": "burst429=0 reserve_st=200"
+  },
+  {
+   "cat": "app",
+   "name": "confirm then payment_pending webhook: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "emoji in query string: 200, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "chunked-encoded reserve request via raw socket: no 5xx, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel all-remaining-seats race: skipped (no free seats)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with empty user_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "auth",
+   "name": "whitespace-only X-Kavach-Request-Id: 400/401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "two Host headers: no 5xx, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "wire",
+   "name": "obs-fold header continuation (injection shape): no 5xx, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with whitespace-only user_id: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app status with no query param: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "app",
+   "name": "webhook token param repeated (wrong first): 401/403, app alive",
+   "ok": true,
+   "detail": "w=403"
+  },
+  {
+   "cat": "rate",
+   "name": "250 rapid GETs on app /: no 5xx, app alive",
+   "ok": true,
+   "detail": "500s=0"
+  },
+  {
+   "cat": "wire",
+   "name": "GET / root path on engine: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "auth",
+   "name": "Authorization without Bearer prefix: 200 or 401, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel drain of all free seats: skipped (no free seats)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "auth",
+   "name": "signature with 'sha256=' prefix: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "state",
+   "name": "release twice sequentially: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "dot-dot traversal paths: no 5xx, alive",
+   "ok": true,
+   "detail": "st1=404 st2=307"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats as array: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with non-JSON body: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook seats as string: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "rate",
+   "name": "50 rapid same-user reserves on 8092 (2/s limit) then valid reserve after 2s: no 5xx, recovers",
+   "ok": true,
+   "detail": "burst429=45 after=200"
+  },
+  {
+   "cat": "wire",
+   "name": "invalid percent-encoding %zz in query: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with duplicate JSON keys: no 500, app alive",
+   "ok": true,
+   "detail": "p=200"
+  },
+  {
+   "cat": "state",
+   "name": "idem key reuse after confirm: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with unicode combining chars in user_id: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "POST /reserve with no body and no Content-Type: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "cross-tenant release denied: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats null: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/1.1 request without Host header: no 5xx, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "wire",
+   "name": "10,000-char path: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with extra nested unknown keys: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats 1.5: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with unknown event string: no 500, app alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel confirms on two rids: skipped (holds unavailable)",
+   "ok": true,
+   "detail": "st1=200 st2=200"
+  },
+  {
+   "cat": "wire",
+   "name": "Content-Type text/plain with JSON body: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over '/RESERVE' vs request '/reserve': 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with 1000-char idempotency_key: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "20 rapid app holds same user: no 500, app alive",
+   "ok": true,
+   "detail": "500s=0 429s=15"
+  },
+  {
+   "cat": "state",
+   "name": "release with never-held rid on fresh engine: 4xx, conserved",
+   "ok": true,
+   "detail": "status=409"
+  },
+  {
+   "cat": "state",
+   "name": "confirm twice sequentially: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "uppercase-hex MAC: 401 or 200 (no 5xx), alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "race",
+   "name": "30-way race to fill last 30 seats: skipped (free=0)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "wire",
+   "name": "duplicate query keys on /seats: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats as bool true: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "hold-release-then-webhook: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app status with reservation_id null: no 500, app alive",
+   "ok": true,
+   "detail": "p=405"
+  },
+  {
+   "cat": "app",
+   "name": "webhook token in wrong header: 4xx, no 500, alive",
+   "ok": true,
+   "detail": "status=403"
+  },
+  {
+   "cat": "rate",
+   "name": "120 parallel distinct-user reserves on 8092: no 5xx, conserved",
+   "ok": true,
+   "detail": "200s=120 429s=0 free=0"
+  },
+  {
+   "cat": "wire",
+   "name": "double-space request line: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "confirm with 5000-char reservation_id: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist promote chain: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with user_id null: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "auth",
+   "name": "2000-char X-Kavach-Request-Id: no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats/ trailing slash: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with user_id as array: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "reserve with seats 0: 4xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app webhook with empty body (valid token): no 500, alive",
+   "ok": true,
+   "detail": "w=400"
+  },
+  {
+   "cat": "rate",
+   "name": "reads stay 200 after 160-reserve IP burst: no 5xx, alive",
+   "ok": true,
+   "detail": "read=200 5xx=0"
+  },
+  {
+   "cat": "wire",
+   "name": "URL with #fragment: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "state",
+   "name": "reserve free+1 seats: skipped (free=0)",
+   "ok": true,
+   "detail": "free=0"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with idempotency_key as number: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app confirm rid with spaces: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp -999: 401/400, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "50-level nested JSON: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "lowercase 'bearer' scheme: 200 or 401 (no 5xx), alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel app webhooks on distinct rids: skipped (holds unavailable)",
+   "ok": true,
+   "detail": "none"
+  },
+  {
+   "cat": "wire",
+   "name": "PATCH /seats: no 5xx, alive",
+   "ok": true,
+   "detail": "status=405"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats 0.5: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "old rid release after expiry: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app GET on POST-only /api/confirm: no 500, alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "app",
+   "name": "webhook seats 0 payload: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "100 rapid app status calls: no 500, alive",
+   "ok": true,
+   "detail": "500s=0"
+  },
+  {
+   "cat": "wire",
+   "name": "UTF-8 BOM prefixed body: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC with wrong-case secret: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "10KB user_id: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "state",
+   "name": "same idem key two users: no 5xx, conserved",
+   "ok": true,
+   "detail": "st1=200 st2=200"
+  },
+  {
+   "cat": "auth",
+   "name": "non-hex 64-char signature: 4xx/401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel release+reserve: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "OPTIONS /seats (CORS preflight): no 5xx, alive",
+   "ok": true,
+   "detail": "status=405"
+  },
+  {
+   "cat": "state",
+   "name": "cross-tenant confirm denied: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with seats true (bool): no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats%2F encoded slash: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp +60s inside +/-300s window: 200; +600s outside: 401",
+   "ok": true,
+   "detail": "st=200 st2=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve body with duplicate JSON keys: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with empty event string: no 500, alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "race",
+   "name": "8 parallel waitlist joins same user: no 5xx, conserved (size=None)",
+   "ok": true,
+   "detail": "200s=0"
+  },
+  {
+   "cat": "wire",
+   "name": "bare newline inside header value: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats -0.0: 4xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over path-with-query while request path /reserve: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "confirm vs expiry race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "duplicate Host headers: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats \"NaN\" string: 4xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist join while holding: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold with empty user_id: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "cross-tenant webhook: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "absolute-form request line: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with top-level JSON array body: 4xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "self-transfer: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel release race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "non-ASCII X-Kavach-Request-Id: no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "signature header with Bearer prefix: 4xx/401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "race",
+   "name": "reserve+confirm parallel race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "10KB X-Kavach-Signature header: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with seats \"1e2\" string: 4xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "transfer of nonexistent rid: 4xx/404, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "app",
+   "name": "app status with null-byte in rid query: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "app",
+   "name": "webhook token in body with wrong query token: 4xx, no 500",
+   "ok": true,
+   "detail": "w=403"
+  },
+  {
+   "cat": "wire",
+   "name": "chunked transfer-encoding POST: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel transfer race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id with NUL control char: 4xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "state",
+   "name": "transfer empty to_user: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "signature with trailing whitespace: 200 (RFC 7230 OWS stripped by transport, engine never sees it)",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "double URL-encoded slash path (%252F): no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "10KB URL path on /seats: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp +301s just outside window: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id lone UTF-16 surrogate escape: no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats \"1.999999\" string: 4xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook body with duplicate event keys: no 500, alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold seats 10x capacity (500): 4xx, no 500, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp \"-0\": 401/4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "state",
+   "name": "transfer 10KB to_user: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats \"1 \" trailing space string: 4xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "confirm lowercased rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "waitlist join with 10KB user_id: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "NUL byte in URL path on /seats: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "Transfer-Encoding: gzip on POST: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=501"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist promote with empty waitlist: 4xx, no 500, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "space before colon in header name: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as JSON array [1]: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key as boolean true: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "transfer unconfirmed hold: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "POST /reserve/ with MAC signed for /reserve: 401/404, no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/metrics 50x rapid burst: no 5xx, app alive",
+   "ok": true,
+   "detail": "500s=0"
+  },
+  {
+   "cat": "app",
+   "name": "webhook reservation_id as JSON number: no 500, alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel confirm race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id with emoji + variation selector: no 500, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/1.0 request line: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "tab inside signature header value: 401/4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "state",
+   "name": "double release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook event uppercase PAYMENT_SUCCESS: no 500, alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp float string with decimal: 401/4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as negative float -1.0: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id with zero-width joiner U+200D: no 500, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key with emoji: no 500, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "state",
+   "name": "release confirmed booking: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app status rid with SQL-quote payload: no 500, app alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve with unexpected admin/price/role fields: no 500, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/1.1 request without Host header: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "wire",
+   "name": "10KB header name: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "valid MAC but missing timestamp header: 401, no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "request-id containing spaces: 401/4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as string \"true\": 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id as JSON number: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "double confirm: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist join, cancel, re-join: no 5xx, conserved",
+   "ok": true,
+   "detail": "j1=400 c1=400 j2=400"
+  },
+  {
+   "cat": "app",
+   "name": "app confirm other-engine rid: skipped (8092 hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app hold seats \"abc\": no 500, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "race",
+   "name": "8-way parallel reserve same idempotency_key: no 5xx, conserved",
+   "ok": true,
+   "detail": "200s=5"
+  },
+  {
+   "cat": "app",
+   "name": "webhook 100KB body with valid token: no 500, no hang, alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "wire",
+   "name": "empty request (CRLF only): no hang, engine alive",
+   "ok": true,
+   "detail": "resp=b'HTTP/1.1 400 Bad Request\\r\\nContent-Type: '"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC signed for GET sent as POST /reserve: 401, no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp -301s just outside past window: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key as null: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "user_id with only whitespace: no 500, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "state",
+   "name": "release after transfer: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/seats with method POST: no 500, alive",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "app",
+   "name": "webhook missing reservation_id: no 500, alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay other-engine rid: skipped (8092 hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "10KB method name in request line: no hang, engine alive",
+   "ok": true,
+   "detail": "resp=b'HTTP/1.1 405 Method Not Allowed\\r\\nAllow: '"
+  },
+  {
+   "cat": "wire",
+   "name": "Host header 10KB value: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "race",
+   "name": "transfer vs release race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "unknown query param (?debug=1) ignored: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "uppercase hex: valid accepted (200), tampered rejected (401), alive",
+   "ok": true,
+   "detail": "st=200 st2=401"
+  },
+  {
+   "cat": "auth",
+   "name": "empty X-Kavach-Signature value: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp +301s future outside window: 401, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats 999999999999999999 overflow: 4xx, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "transfer to_user empty: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "confirm released hold: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist cancel twice: second no 5xx, alive",
+   "ok": true,
+   "detail": "st1=400 st2=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold 1MB body: no 500, alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "race",
+   "name": "parallel release race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "rate",
+   "name": "same-user waitlist join burst 14: limiter fires, zero 5xx",
+   "ok": true,
+   "detail": "429s=8"
+  },
+  {
+   "cat": "wire",
+   "name": "null byte in query param value: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats 10KB query string: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay negative amount: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "idempotency_key with null byte: no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "duplicate X-Kavach-Timestamp headers: 401, no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "double transfer: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay unknown rid: graceful, no 500, alive",
+   "ok": true,
+   "detail": "p=404"
+  },
+  {
+   "cat": "wire",
+   "name": "10KB URL path: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "10KB event_id on reserve: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/seats?limit=999999: no 500, alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "reserve with custom event_id ev-99: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel transfer multi-user: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "transfer to_user null byte: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats backslash in path: no 5xx, no hang, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "GET /seats raw space in path: graceful 400, alive",
+   "ok": true,
+   "detail": "resp=HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset="
+  },
+  {
+   "cat": "state",
+   "name": "transfer released rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "rate",
+   "name": "transfer burst: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "wire",
+   "name": "HTTP/2 preface to HTTP/1.1 engine: graceful, alive",
+   "ok": true,
+   "detail": "resp=b\"EXC name 'socket' is not defined\""
+  },
+  {
+   "cat": "fuzz",
+   "name": "to_user JSON number: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount string: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "confirm waitlist entry id: skipped (no entry id in {'status': 'bad_request'})",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "state",
+   "name": "transfer round trip: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "transfer to self: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as unicode digit (Bengali 1): no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "auth",
+   "name": "HMAC-SHA512 signature: 401 rejected, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "seats as JSON escaped unicode digit \\u0031: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "transfer extra seats field: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount null: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "waitlist+release race: skipped (holds unavailable)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "cat": "fuzz",
+   "name": "event_id as JSON boolean: no 5xx, alive",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "wire",
+   "name": "null byte in header value (raw socket): 400/close, alive",
+   "ok": true,
+   "detail": "resp=HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset="
+  },
+  {
+   "cat": "wire",
+   "name": "@ in URL path: no 5xx, alive",
+   "ok": true,
+   "detail": "status=404"
+  },
+  {
+   "cat": "wire",
+   "name": "query key with no value (?k): no 5xx, alive",
+   "ok": true,
+   "detail": "status=200"
+  },
+  {
+   "cat": "auth",
+   "name": "10KB X-Kavach-Request-Id: no 5xx, alive",
+   "ok": true,
+   "detail": "status=401"
+  },
+  {
+   "cat": "wire",
+   "name": "CR-only line endings (raw socket): 400/close, alive",
+   "ok": true,
+   "detail": "resp="
+  },
+  {
+   "cat": "fuzz",
+   "name": "event_id whitespace-only: no 5xx, conserved",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount boolean: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel confirm of 6 different rids: skipped (engine full)",
+   "ok": true,
+   "detail": "sold_out st=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook truncated/trailing-comma JSON with valid token: no 5xx, app alive",
+   "ok": true,
+   "detail": "w=400 w2=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook token via Authorization header only: 401/403, app alive",
+   "ok": true,
+   "detail": "st=403"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount 1e15: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "partial transfer (seats field on transfer): skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook with 10KB token: 4xx, no 5xx, app alive",
+   "ok": true,
+   "detail": "st=403"
+  },
+  {
+   "cat": "wire",
+   "name": "Transfer-Encoding: identity on POST: clean 2xx/4xx/501 (RFC 7230), alive",
+   "ok": true,
+   "detail": "resp=HTTP/1.1 501 Not Implemented\r\nContent-Type: text/plain; char"
+  },
+  {
+   "cat": "fuzz",
+   "name": "top-level scalar JSON body on /reserve: 4xx, no 5xx",
+   "ok": true,
+   "detail": "status=400"
+  },
+  {
+   "cat": "state",
+   "name": "transfer to_user 'undefined': skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "full flow on 8092: skipped (engine2 sold out), sold_out response graceful",
+   "ok": true,
+   "detail": "st=200 body={\"status\": \"sold_out\"}"
+  },
+  {
+   "cat": "state",
+   "name": "transfer idempotency (same rid+idem twice): skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "6 users same idempotency_key parallel reserve: no 5xx, conserved",
+   "ok": true,
+   "detail": "outs=[200, 200, 200, 200, 200, 200]"
+  },
+  {
+   "cat": "race",
+   "name": "parallel transfer of 6 different rids: skipped (engine full)",
+   "ok": true,
+   "detail": "sold_out st=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook duplicate token in query (both orders): no 5xx, app alive",
+   "ok": true,
+   "detail": "w1=403 w2=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold scalar JSON body (plain string): no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook payment_success with wrong amount: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay rid with newline: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over rid A sent with rid B (sig-rid binding): 401/4xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount Arabic-Indic digits: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over old ts sent with current ts (sig-ts binding): 401/4xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "auth",
+   "name": "dual auth conflict (sig over testkey, Bearer otherkey): no 5xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "race",
+   "name": "parallel release of 6 different rids: skipped (engine full)",
+   "ok": true,
+   "detail": "sold_out st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount plus prefix: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount zero: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "transfer with forged from_user: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "confirm on transferred rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "10KB Bearer token in Authorization: 401/4xx, no 5xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp as RFC1123 date string: 4xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "auth",
+   "name": "signature as base64 (not hex): 401/4xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "auth",
+   "name": "to_user whitespace-only: graceful 4xx or rejected, no 5xx, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/waitlist scalar JSON body: no 500, app alive",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook event as JSON array: no 500, app alive",
+   "ok": true,
+   "detail": "w=400"
+  },
+  {
+   "cat": "app",
+   "name": "app pay amount list: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "parallel reserve same idem seats 1 vs 2: no 5xx, conserved",
+   "ok": true,
+   "detail": "st1=200 st2=200"
+  },
+  {
+   "cat": "auth",
+   "name": "sig over otherkey sent with Bearer testkey: 401, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "state",
+   "name": "/release with reservation_id as number 123: 4xx graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "race",
+   "name": "confirm+transfer race on same rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "timestamp as Arabic-Indic digits (raw socket): 4xx, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "/confirm with reservation_id as JSON array: 4xx graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "race",
+   "name": "expired-hold race: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "webhook valid token, Content-Type text/plain: no 500, app alive",
+   "ok": true,
+   "detail": "w=400"
+  },
+  {
+   "cat": "app",
+   "name": "app pay rid array: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "seats as string \"01\" (leading zero): graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "transfer to_user null: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "idempotency_key as JSON object: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "webhook event field as number: no 500, app alive",
+   "ok": true,
+   "detail": "w=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/waitlist seats as JSON array: no 500, graceful",
+   "ok": true,
+   "detail": "p=400"
+  },
+  {
+   "cat": "auth",
+   "name": "user_id as boolean true: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats huge int 99999999999999999999: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats as string \"1.0\": graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats -0 (negative zero): graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve user_id as nested JSON object: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "confirm with 10000-char reservation_id: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "auth",
+   "name": "duplicate X-Kavach-Timestamp headers (sig over first): no 5xx, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp as float string: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "auth",
+   "name": "Authorization \"Bearer \" empty token: 401, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "state",
+   "name": "multi-hop transfer: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold seats \"1.5\": no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay user_id null: no 500, app alive",
+   "ok": true,
+   "detail": "st=409"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook query token percent-encoded %77hsec: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "cross-instance rid replay: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "4-way transfer race same rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve duplicate user_id JSON keys (u1, u2): no 5xx, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Signature 65 hex chars (extra char): 401, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "state",
+   "name": "idem reuse after release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "replay-window boundary sweep ts -60/-299/-301/-900s: graceful, no 5xx",
+   "ok": true,
+   "detail": "now-60=200,now-299=200,now-301=401,now-900=401"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay reservation_id as JSON number: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold seats huge string: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook Content-Type application/xml valid token: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook ?token= empty: no 500, app alive",
+   "ok": true,
+   "detail": "st=403"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook event field null: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app pay other user's rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "cross-instance release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /board huge offset: no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/deals with another user's user_id (IDOR probe): no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Signature all-zero 64 hex: 401, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "state",
+   "name": "post-confirm waitlist join: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "idem replay post-confirm: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay outcome \"pending\": no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold seats -1: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats as string \"1e2\": graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook event as empty string: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "two parallel identical reserves (same idem, same payload): no 5xx, conserved",
+   "ok": true,
+   "detail": "sts=[200, 200]"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold duplicate seats JSON keys: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats Devanagari digit string: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over permuted canonical order (ts path rid method): 401, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "confirm duplicate rid keys: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve user_id as empty string: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold user_id with tab char: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay reservation_id as JSON object: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook token in query AND Authorization header: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "reserve + release race: no 5xx, conserved",
+   "ok": true,
+   "detail": "r=200 rel=409"
+  },
+  {
+   "cat": "fuzz",
+   "name": "waitlist user_id as JSON number: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats as string \"-1\": graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold empty body (0 bytes): no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay user_id boolean true: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook token base64-encoded: no 500, app alive",
+   "ok": true,
+   "detail": "st=403"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay outcome empty string: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay outcome boolean true: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "transfer to_user object: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve idempotency_key whitespace-only: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp with leading plus sign: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/board limit as string: no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold seats \"1e1\": no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "release post-transfer rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay reservation_id whitespace-padded: no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "DELETE /seats with valid signature: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "auth",
+   "name": "MAC over lowercase method: 401, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve idempotency_key 5000 chars: graceful, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "waitlist-release-confirm chain: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "transfer to_user tab: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve idempotency_key as JSON number: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay with unexpected seats field: no 500, app alive",
+   "ok": true,
+   "detail": "st=403"
+  },
+  {
+   "cat": "fuzz",
+   "name": "confirm with body \"null\": no 5xx, conserved",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "race",
+   "name": "same idem different seat counts race: no 5xx, conserved",
+   "ok": true,
+   "detail": "s1=200 s2=200"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook event as JSON number: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay user_id as JSON array: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "waitlist seats as float 0.5: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "transfer sold rid: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook duplicate event+rid keys: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve body with UTF-8 BOM: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats 2^53+1: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve duplicate seats keys: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold seats as JSON object: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "release with idem: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay duplicate reservation_id keys: no 500, app alive",
+   "ok": true,
+   "detail": "st=403"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook token with trailing newline: no 500, app alive",
+   "ok": true,
+   "detail": "st=403"
+  },
+  {
+   "cat": "race",
+   "name": "parallel confirm two rids: skipped (holds unavailable)",
+   "ok": true,
+   "detail": "s1=200 s2=200"
+  },
+  {
+   "cat": "state",
+   "name": "circular transfer: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "sA=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "waitlist idempotency_key 5000 chars: graceful, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/board negative limit: no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "PUT /reserve with valid signature: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay outcome float 1.5: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app POST /api/deals method confusion: no 500, app alive",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "race",
+   "name": "overcommit race combined 60 > 50 free: no 5xx, conserved",
+   "ok": true,
+   "detail": "s1=400 s2=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats as string \"null\": graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "release reservation_id as JSON array: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "new-owner release: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "auth",
+   "name": "X-Kavach-Timestamp as \"true\": no 5xx, conserved",
+   "ok": true,
+   "detail": "st=401"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve user_id equal to idempotency_key: graceful, conserved",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook reservation_id whitespace-padded: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "race",
+   "name": "GET /seats during concurrent reserve: 200, conserved",
+   "ok": true,
+   "detail": "w=200 r=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "confirm reservation_id 10000 chars: no 5xx, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold user_id float 1.5: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats as string \"+2\": graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "transfer to_user newline: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "fuzz",
+   "name": "/waitlist seats as string \"1.0\": graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "release seats \"0\": skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "confirm without idem: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "webhook",
+   "name": "webhook reservation_id as JSON unicode escapes: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold user_id as JSON array: no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/pay outcome whitespace-padded: no 500, app alive",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/board limit float 1.5: no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/board limit boolean true: no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "app",
+   "name": "app POST /api/deals duplicate title keys: no 500, app alive",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "fuzz",
+   "name": "/waitlist body with UTF-8 BOM: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "fuzz",
+   "name": "reserve seats as string \" 2\" (leading whitespace): graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "release seats \"2.0\": skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "state",
+   "name": "reserve+waitlist race: skipped (no free seats)",
+   "ok": true,
+   "detail": "free0=0"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/hold seats as string \"02\": no 500, app alive",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "state",
+   "name": "confirm idem array: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app POST /api/deals title whitespace-only: no 500, app alive",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/board limit=100000 (huge): no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "state",
+   "name": "transfer missing to_user: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
+  },
+  {
+   "cat": "app",
+   "name": "app /api/board limit=1e9 (scientific): no 500, app alive",
+   "ok": true,
+   "detail": "st=404"
+  },
+  {
+   "cat": "fuzz",
+   "name": "waitlist with seats as boolean true: graceful, conserved",
+   "ok": true,
+   "detail": "st=400"
+  },
+  {
+   "cat": "app",
+   "name": "app POST /api/deals with seats as string \"1\": no 500, app alive",
+   "ok": true,
+   "detail": "st=405"
+  },
+  {
+   "cat": "state",
+   "name": "release user_id array: skipped (hold unavailable)",
+   "ok": true,
+   "detail": "st=200"
   }
  ],
  "findings": []
