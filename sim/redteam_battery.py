@@ -7835,6 +7835,103 @@ def app_hold_userid_float():
     return check("app", "app /api/hold user_id float 1.5: no 500, app alive", ok, "st=%s" % st)
 app_hold_userid_float()
 
+def bq_bq_alive(port, path="/seats"):
+    st, _ = raw(port, "GET", path)
+    return st == 200
+def bq_hold(user, key, seats_n=1, port=ER):
+    st, j = post(port, "/reserve", {"user_id": user, "idempotency_key": key, "seats": seats_n})
+    return (j.get("reservation_id") if isinstance(j, dict) and st == 200 else None), st, j
+
+# ---------------- Phase BQ: run 115 extras (12 new angles) ----------------
+def bq_reserve_seats_plus():
+    st, j = post(ER, "/reserve", {"user_id": "rt-115sp", "idempotency_key": "k115sp", "seats": "+2"})
+    ok = st != 500 and st != -1 and conserved() and bq_bq_alive(ER)
+    return check("fuzz", "reserve seats as string \"+2\": graceful, conserved", ok, "st=%s" % st)
+bq_reserve_seats_plus()
+
+def bq_transfer_newline():
+    rid, st, _ = bq_hold("rt-115tn", "k115tn")
+    if not rid:
+        return check("state", "transfer to_user newline: skipped (hold unavailable)", True, "st=%s" % st)
+    st2, _ = post(ER, "/transfer", {"reservation_id": rid, "to_user": "rt-115tn\nb"})
+    time.sleep(0.2)
+    ok = st2 != 500 and st2 != -1 and conserved() and bq_bq_alive(ER)
+    return check("fuzz", "transfer to_user containing newline: no 5xx, conserved", ok, "st2=%s" % st2)
+bq_transfer_newline()
+
+def bq_waitlist_seats_str():
+    st, j = post(ER, "/waitlist", {"user_id": "rt-115w0", "idempotency_key": "k115w0", "seats": "1.0"})
+    ok = st != 500 and st != -1 and conserved() and bq_bq_alive(ER)
+    return check("fuzz", "/waitlist seats as string \"1.0\": graceful, conserved", ok, "st=%s" % st)
+bq_waitlist_seats_str()
+
+def bq_release_seats_zero():
+    rid, st, _ = bq_hold("rt-115rz", "k115rz")
+    if not rid:
+        return check("state", "release seats \"0\": skipped (hold unavailable)", True, "st=%s" % st)
+    st2, _ = post(ER, "/release", {"reservation_id": rid, "seats": "0"})
+    time.sleep(0.2)
+    ok = st2 != 500 and st2 != -1 and conserved() and bq_bq_alive(ER)
+    return check("state", "/release with seats field \"0\": no 5xx, conserved", ok, "st2=%s" % st2)
+bq_release_seats_zero()
+
+def bq_confirm_no_idem():
+    rid, st, _ = bq_hold("rt-115ci", "k115ci")
+    if not rid:
+        return check("state", "confirm without idem: skipped (hold unavailable)", True, "st=%s" % st)
+    st2, _ = post(ER, "/confirm", {"reservation_id": rid})
+    time.sleep(0.2)
+    ok = st2 != 500 and st2 != -1 and conserved() and bq_bq_alive(ER)
+    return check("state", "/confirm without idempotency_key: no 5xx, conserved", ok, "st2=%s" % st2)
+bq_confirm_no_idem()
+
+def bq_webhook_rid_escapes():
+    body = b'{"event": "payment_success", "reservation_id": "\\u0052\\u0053\\u0056\\u0030\\u0030\\u0030\\u0030\\u0030\\u0030\\u0030\\u0031"}'
+    st, j = raw(AR, "POST", "/api/kavach-webhook?token=whsec-redtest", body)
+    ok = st != 500 and st != -1 and bq_bq_alive(AR, "/")
+    return check("webhook", "webhook reservation_id as JSON unicode escapes: no 500, app alive", ok, "st=%s" % st)
+bq_webhook_rid_escapes()
+
+def bq_app_hold_uid_array():
+    body = json.dumps({"user_id": ["rt-115ha"], "seats": 1}).encode()
+    st, j = raw(AR, "POST", "/api/hold", body)
+    ok = st != 500 and st != -1 and bq_bq_alive(AR, "/")
+    return check("app", "app /api/hold user_id as JSON array: no 500, app alive", ok, "st=%s" % st)
+bq_app_hold_uid_array()
+
+def bq_app_pay_outcome_padded():
+    body = json.dumps({"reservation_id": "RSV00000001", "user_id": "rt-115op", "outcome": " SUCCESS "}).encode()
+    st, j = raw(AR, "POST", "/api/pay", body)
+    ok = st != 500 and st != -1 and bq_bq_alive(AR, "/")
+    return check("app", "app /api/pay outcome whitespace-padded: no 500, app alive", ok, "st=%s" % st)
+bq_app_pay_outcome_padded()
+
+def bq_app_board_limit_float():
+    st, j = raw(AR, "GET", "/api/board?limit=1.5")
+    ok = st != 500 and st != -1 and bq_bq_alive(AR, "/")
+    return check("app", "app /api/board limit float 1.5: no 500, app alive", ok, "st=%s" % st)
+bq_app_board_limit_float()
+
+def bq_app_board_limit_bool():
+    st, j = raw(AR, "GET", "/api/board?limit=true")
+    ok = st != 500 and st != -1 and bq_bq_alive(AR, "/")
+    return check("app", "app /api/board limit boolean true: no 500, app alive", ok, "st=%s" % st)
+bq_app_board_limit_bool()
+
+def bq_app_deals_dup_title():
+    st, j = raw(AR, "POST", "/api/deals", b'{"title": "rt-115a", "title": "rt-115b"}')
+    ok = st != 500 and st != -1 and bq_bq_alive(AR, "/")
+    return check("app", "app POST /api/deals duplicate title keys: no 500, app alive", ok, "st=%s" % st)
+bq_app_deals_dup_title()
+
+def bq_waitlist_bom():
+    body = b"\xef\xbb\xbf" + json.dumps({"user_id": "rt-115wb", "idempotency_key": "k115wb", "seats": 1}).encode()
+    h = sign(KEY, "POST", "/waitlist", body)
+    st, j = raw(ER, "POST", "/waitlist", body, h)
+    ok = st != 500 and st != -1 and conserved() and bq_bq_alive(ER)
+    return check("fuzz", "/waitlist body with UTF-8 BOM: graceful, conserved", ok, "st=%s" % st)
+bq_waitlist_bom()
+
 # ---------------- Summary ----------------
 fails = [r for r in results if not r["ok"]]
 findings = [r for r in results if r["ok"] and "finding" in r["name"].lower()]
