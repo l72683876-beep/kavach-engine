@@ -328,13 +328,13 @@
    "cat": "race",
    "name": "control booking works",
    "ok": true,
-   "detail": "{'status': 'confirmed', 'seats': [19, 20], 'booking_id': 'BK00000013'}"
+   "detail": "{'status': 'confirmed', 'seats': [34, 35], 'booking_id': 'BK00000013'}"
   },
   {
    "cat": "race",
    "name": "50 parallel SAME idempotency key: exactly one booking",
    "ok": true,
-   "detail": "confirmed=3 ids=1"
+   "detail": "confirmed=5 ids=1"
   },
   {
    "cat": "race",
@@ -460,7 +460,7 @@
    "cat": "app",
    "name": "hold->pay->booking happy path",
    "ok": true,
-   "detail": "{'booking_id': 'BK00000018', 'ok': True, 'seats': [30]}"
+   "detail": "{'booking_id': 'BK00000018', 'ok': True, 'seats': [45]}"
   },
   {
    "cat": "app",
@@ -1558,7 +1558,7 @@
    "cat": "race",
    "name": "10 parallel reserves, same idempotency_key: at most 1 hold, conserved",
    "ok": true,
-   "detail": "held+0 outs=[401, 200, 401, 401, 401, 401, 401, 401, 401, 401]"
+   "detail": "held+0 outs=[200, 401, 401, 401, 401, 401, 401, 401, 401, 401]"
   },
   {
    "cat": "app",
@@ -1700,9 +1700,9 @@
   },
   {
    "cat": "abuse",
-   "name": "10 parallel waitlist joins, same user, 10 different keys: no 5xx, conserved (outs=[200, 200, 200, 429, 200, 429, 429, 200, 429, 429])",
+   "name": "10 parallel waitlist joins, same user, 10 different keys: no 5xx, conserved (outs=[200, 200, 429, 200, 429, 429, 200, 429, 200, 429])",
    "ok": true,
-   "detail": "outs=[200, 200, 200, 429, 200, 429, 429, 200, 429, 429]"
+   "detail": "outs=[200, 200, 429, 200, 429, 429, 200, 429, 200, 429]"
   },
   {
    "cat": "wire",
