@@ -4,36 +4,60 @@
   "entity": {
     "type": "individual",
     "role": "owner",
-    "name": "Nayak",
+    "name": "Lucky Nayak",
     "email": "85ede0d93e37ae85b96e@wajo.ai",
-    "description": "Maintainer of the Kavach open-source project.",
-    "webpageUrl": {"url": "https://github.com/l72683876-beep/kavach-engine"}
+    "description": "Student developer (Class 12, NIOS) from Faridabad, Haryana, India, and the sole maintainer of Kavach. Kavach has been designed, built, tested and shipped end to end from an Android phone running Termux: a Product Hunt launch, an 842-case adversarial red-team battery that passes clean, and CI (build, tests, race detector) on every pull request. Looking to move to full-time iteration on real hardware.",
+    "webpageUrl": {
+      "url": "https://github.com/l72683876-beep",
+      "wellKnown": "https://github.com/l72683876-beep/kavach-engine/.well-known/funding-manifest-urls"
+    }
   },
   "projects": [
     {
       "guid": "kavach-engine",
       "name": "Kavach",
-      "description": "Kavach is an open-source inventory reservation and booking engine.",
-      "webpageUrl": {"url": "https://github.com/l72683876-beep/kavach-engine"},
-      "repositoryUrl": {"url": "https://github.com/l72683876-beep/kavach-engine"},
-      "licenses": ["spdx:MIT"],
-      "tags": ["developer-tools", "security", "booking"]
+      "description": "Kavach is an open-source Go inventory-reservation and booking engine for flash sales: e-commerce drops, tickets, hotels, events. It keeps high-concurrency booking systems from overselling with replay protection, idempotency keys, rate limiting, hold TTLs and multi-tenant auth. It launched on Product Hunt and passes an 842-case adversarial red-team battery clean (replay windows, HMAC tampering, rate-limit bypass, last-seat races, webhook abuse). CI runs build, tests and the race detector on every pull request.",
+      "webpageUrl": {
+        "url": "https://github.com/l72683876-beep/kavach-engine"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/l72683876-beep/kavach-engine",
+        "wellKnown": "https://github.com/l72683876-beep/kavach-engine/.well-known/funding-manifest-urls"
+      },
+      "licenses": [
+        "spdx:MIT"
+      ],
+      "tags": [
+        "developer-tools",
+        "security",
+        "booking",
+        "go",
+        "infrastructure",
+        "inventory",
+        "rate-limiting"
+      ]
     }
   ],
   "funding": {
     "channels": [
-      {"guid": "grant-arrangement", "type": "other", "description": "Grant disbursement arrangements to be discussed with the funder."}
+      {
+        "guid": "grant-arrangement",
+        "type": "other",
+        "description": "Grant disbursement arrangements to be discussed with the funder."
+      }
     ],
     "plans": [
       {
         "guid": "kavach-development",
         "status": "active",
         "name": "Kavach development",
-        "description": "Funding is sought for a development laptop and for improving Kavach's security and Copilot, making setup and documentation easier for developers, and creating tests that others can independently reproduce and verify.",
+        "description": "One-time project grant (FOSS United's typical project grant size of 3-7L INR over a year is a comfortable fit; any amount helps). What funding enables, in priority order: (1) a development laptop, so full-time iteration replaces evenings-of-careful-commits from a phone; (2) engine security: deepen suspicious-activity monitoring and the adversarial red-team battery toward a 10/10 resilience bar, with zero false-positive blocks for genuine users; (3) the in-repo Kavach Copilot assistant made more capable, understanding more of engine activity; (4) developer onboarding: one-click setup via GitHub Codespaces or Actions, runnable examples and cleaner docs; (5) reproducible verification: a single command that runs the whole test suite with a clear PASS/FAIL, and benchmark reports (accepted bookings, rejected requests, requests per second, latency percentiles, hardware, duration, unique sold seats) anyone can re-run and check.\n\nPersonal milestones for the grant period: M1 (first quarter) harden monitoring + red-team battery, publish a reproducible benchmark report; M2 (second quarter) Copilot upgrade covering monitor signals and deal profiles; M3 (third quarter) one-click onboarding + expanded examples and docs; M4 (fourth quarter) full-suite reproducible verification and a public security write-up. At least one community engagement per quarter (an event talk, a guest blog post, or a quarterly update on the FOSS United forum).",
         "amount": 0,
         "currency": "INR",
         "frequency": "one-time",
-        "channels": ["grant-arrangement"]
+        "channels": [
+          "grant-arrangement"
+        ]
       }
     ]
   }
