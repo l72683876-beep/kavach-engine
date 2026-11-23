@@ -1,0 +1,40 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.1.0",
+  "entity": {
+    "type": "individual",
+    "role": "owner",
+    "name": "Nayak",
+    "email": "85ede0d93e37ae85b96e@wajo.ai",
+    "description": "Maintainer of the Kavach open-source project.",
+    "webpageUrl": {"url": "https://github.com/l72683876-beep/kavach-engine"}
+  },
+  "projects": [
+    {
+      "guid": "kavach-engine",
+      "name": "Kavach",
+      "description": "Kavach is an open-source inventory reservation and booking engine.",
+      "webpageUrl": {"url": "https://github.com/l72683876-beep/kavach-engine"},
+      "repositoryUrl": {"url": "https://github.com/l72683876-beep/kavach-engine"},
+      "licenses": ["spdx:MIT"],
+      "tags": ["developer-tools", "security", "booking"]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {"guid": "grant-arrangement", "type": "other", "description": "Grant disbursement arrangements to be discussed with the funder."}
+    ],
+    "plans": [
+      {
+        "guid": "kavach-development",
+        "status": "active",
+        "name": "Kavach development",
+        "description": "Funding is sought for a development laptop and for improving Kavach's security and Copilot, making setup and documentation easier for developers, and creating tests that others can independently reproduce and verify.",
+        "amount": 0,
+        "currency": "INR",
+        "frequency": "one-time",
+        "channels": ["grant-arrangement"]
+      }
+    ]
+  }
+}
