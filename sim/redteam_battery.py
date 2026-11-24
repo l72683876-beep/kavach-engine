@@ -14,6 +14,28 @@ from concurrent.futures import ThreadPoolExecutor
 ER, AR, EL, ER2 = 8091, 9001, 8080, 8092
 ET = 8095  # dedicated short-TTL engine, no other traffic
 KEY, KEY2, SECRET = "testkey", "otherkey", "testsecret"
+import subprocess as _sp
+def fresh_race_engine(port=8097, n=30):
+    """Launch a dedicated fresh engine for last-seat races so they never depend on leftover state.
+    Runs in an isolated cwd so it does not replay the shared bookings.jsonl of the main engines."""
+    _sp.run(["pkill", "-f", "addr :%d" % port], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+    time.sleep(0.3)
+    _sp.run(["mkdir", "-p", "/tmp/battery/race"], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+    for f in ("bookings.jsonl", "holds.jsonl", "alerts.jsonl"):
+        try: open("/tmp/battery/race/" + f, "w").close()
+        except Exception: pass
+    _sp.Popen(["/workspace/kv/engine/kavach", "-seats", str(n), "-ip-rate", "100", "-ip-burst", "300", "-hold-ttl", "3",
+               "-api-keys", "testkey:tenant1,otherkey:tenant2", "-hmac-secret", "testsecret", "-addr", ":%d" % port],
+              cwd="/tmp/battery/race",
+              stdout=open("/tmp/battery/engine%d.log" % port, "w"), stderr=_sp.STDOUT)
+    for _ in range(60):
+        st, j = raw(port, "GET", "/seats")
+        if st == 200 and j.get("sold", 1) == 0:
+            return port
+        time.sleep(0.1)
+    return port
+def kill_race_engine(port=8097):
+    _sp.run(["pkill", "-f", "addr :%d" % port], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
 results = []
 
 def check(cat, name, ok, detail=""):
@@ -219,16 +241,18 @@ def fingerprint_mismatch():
                  seats(ER).get("sold") == before, str(a)[:120])
 fingerprint_mismatch()
 def hold_race():
+    RP = fresh_race_engine(8097, 30)
     i = 0
-    while seats(ER2).get("free", 0) > 1 and i < 60:
-        post(ER2, "/book", {"user_id": "rt-hp%d" % i, "idempotency_key": "khp%d" % i, "seats": 1}); i += 1
-    outs = P(60, lambda i: post(ER2, "/reserve", {"user_id": "rt-h%d" % i, "idempotency_key": "rh%d" % i, "seats": 1}))
+    while seats(RP).get("free", 0) > 1 and i < 60:
+        post(RP, "/book", {"user_id": "rt-hp%d" % i, "idempotency_key": "khp%d" % i, "seats": 1}); i += 1
+    outs = P(60, lambda i: post(RP, "/reserve", {"user_id": "rt-h%d" % i, "idempotency_key": "rh%d" % i, "seats": 1}))
     held = [o for o in outs if o[0] == 200 and o[1].get("status") == "held"]
     # release the winning hold so the choreography does not depend on TTL expiry timing
     for o in held:
         rid = o[1].get("reservation_id")
         if rid:
-            post(ER2, "/release", {"reservation_id": rid})
+            post(RP, "/release", {"reservation_id": rid})
+    kill_race_engine(8097)
     return check("race", "60 parallel reserve THE LAST seat: exactly one hold", len(held) == 1, "held=%d" % len(held))
 hold_race()
 def confirm_race():
@@ -314,16 +338,20 @@ time.sleep(5)
 free = seats(ER).get("free")
 def drain():
     i = 0
-    while seats(ER2).get("free", 0) > 1 and i < 60:
-        post(ER2, "/book", {"user_id": "rt-drain%d" % i, "idempotency_key": "kd%d" % i, "seats": 1})
+    RP = fresh_race_engine(8097, 30)
+    while seats(RP).get("free", 0) > 1 and i < 60:
+        post(RP, "/book", {"user_id": "rt-drain%d" % i, "idempotency_key": "kd%d" % i, "seats": 1})
         i += 1
+    return RP
 drain()
 def last_seat_race():
-    outs = P(100, lambda i: post(ER2, "/book", {"user_id": "rt-ls%d" % i, "idempotency_key": "kl%d" % i, "seats": 1}))
+    RP = drain()
+    outs = P(100, lambda i: post(RP, "/book", {"user_id": "rt-ls%d" % i, "idempotency_key": "kl%d" % i, "seats": 1}))
     ok = [o for o in outs if o[0] == 200 and o[1].get("status") == "confirmed"]
-    s = seats(ER2)
+    s = seats(RP)
+    kill_race_engine(8097)
     return check("race", "HEAVY: 100 parallel for the LAST seat: exactly one winner, zero oversell",
-                 len(ok) == 1 and s.get("free") == 0 and s.get("total") == s.get("sold") + s.get("held") + s.get("free"), "winners=%d statuses=%s seats=%s" % (len(ok), dict(__import__("collections").Counter(o[0] for o in outs)), seats(ER2)))
+                 len(ok) == 1 and s.get("free") == 0 and s.get("total") == s.get("sold") + s.get("held") + s.get("free"), "winners=%d statuses=%s seats=%s" % (len(ok), dict(__import__("collections").Counter(o[0] for o in outs)), seats(8097) if False else s))
 last_seat_race()
 def sold_out_flood():
     outs = P(200, lambda i: post(ER2, "/book", {"user_id": "rt-so%d" % i, "idempotency_key": "ks%d" % i, "seats": 1})[0])
