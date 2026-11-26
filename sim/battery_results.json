@@ -328,7 +328,7 @@
    "cat": "race",
    "name": "control booking works",
    "ok": true,
-   "detail": "{'status': 'confirmed', 'seats': [28, 29], 'booking_id': 'BK00000014'}"
+   "detail": "{'status': 'confirmed', 'seats': [25, 26], 'booking_id': 'BK00000015'}"
   },
   {
    "cat": "race",
@@ -400,7 +400,7 @@
    "cat": "state",
    "name": "double release: idempotent, seats freed exactly once",
    "ok": true,
-   "detail": "200/200 free 29->30->30"
+   "detail": "200/200 free 28->29->29"
   },
   {
    "cat": "state",
@@ -436,7 +436,7 @@
    "cat": "state",
    "name": "final invariant: total == sold + held + free",
    "ok": true,
-   "detail": "{'free': 31, 'held': 0, 'sold': 19, 'total': 50}"
+   "detail": "{'free': 30, 'held': 0, 'sold': 20, 'total': 50}"
   },
   {
    "cat": "app",
@@ -448,7 +448,7 @@
    "cat": "app",
    "name": "/api/seats board matches engine",
    "ok": true,
-   "detail": "{'free': 31, 'held': 0, 'sold': 19, 'total': 50}"
+   "detail": "{'free': 30, 'held': 0, 'sold': 20, 'total': 50}"
   },
   {
    "cat": "app",
@@ -460,7 +460,7 @@
    "cat": "app",
    "name": "hold->pay->booking happy path",
    "ok": true,
-   "detail": "{'booking_id': 'BK00000019', 'ok': True, 'seats': [39]}"
+   "detail": "{'booking_id': 'BK00000020', 'ok': True, 'seats': [36]}"
   },
   {
    "cat": "app",
@@ -1700,9 +1700,9 @@
   },
   {
    "cat": "abuse",
-   "name": "10 parallel waitlist joins, same user, 10 different keys: no 5xx, conserved (outs=[200, 200, 200, 200, 429, 429, 429, 429, 429, 200])",
+   "name": "10 parallel waitlist joins, same user, 10 different keys: no 5xx, conserved (outs=[200, 200, 200, 200, 429, 429, 200, 429, 429, 429])",
    "ok": true,
-   "detail": "outs=[200, 200, 200, 200, 429, 429, 429, 429, 429, 200]"
+   "detail": "outs=[200, 200, 200, 200, 429, 429, 200, 429, 429, 429]"
   },
   {
    "cat": "wire",
