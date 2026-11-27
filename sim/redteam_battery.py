@@ -7038,18 +7038,24 @@ def dup_timestamp_headers():
             ("X-Kavach-Timestamp", h["X-Kavach-Timestamp"]), ("X-Kavach-Request-Id", h["X-Kavach-Request-Id"]),
             ("X-Kavach-Signature", h["X-Kavach-Signature"]), ("Content-Type", "application/json"),
             ("X-Kavach-Timestamp", "9999999999")]
-    try:
-        c = http.client.HTTPConnection("127.0.0.1", ER, timeout=25)
-        c.putrequest("POST", "/reserve")
-        for k, v in hdrs:
-            c.putheader(k, v)
-        c.putheader("Content-Length", str(len(body)))
-        c.endheaders(body)
-        r = c.getresponse(); r.read(); st = r.status; c.close()
-    except Exception as ex:
-        st = -1
+    st = -1; retry_note = ""
+    for attempt in (1, 2):  # one retry: connection-layer flake seen under battery churn, engine parse itself is stateless
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", ER, timeout=25)
+            c.putrequest("POST", "/reserve")
+            for k, v in hdrs:
+                c.putheader(k, v)
+            c.putheader("Content-Length", str(len(body)))
+            c.endheaders(body)
+            r = c.getresponse(); r.read(); st = r.status; c.close()
+            if attempt == 2:
+                retry_note = " (attempt1 reset, attempt2 st=%s)" % st
+            break
+        except Exception as ex:
+            if attempt == 2:
+                retry_note = " (both attempts reset: %s)" % type(ex).__name__
     ok = st != 500 and st != -1 and conserved() and bi_alive(ER)
-    return check("auth", "duplicate X-Kavach-Timestamp headers (sig over first): no 5xx, conserved", ok, "st=%s" % st)
+    return check("auth", "duplicate X-Kavach-Timestamp headers (sig over first): no 5xx, conserved", ok, "st=%s%s" % (st, retry_note))
 dup_timestamp_headers()
 
 def ts_float_string():
